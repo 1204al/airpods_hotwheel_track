@@ -1,5 +1,12 @@
 # PodTrack
 
+<table>
+  <tr>
+    <td width="50%"><img src="docs/images/podtrack-3d-track.png" alt="PodTrack 3D track reconstruction"></td>
+    <td width="50%"><img src="docs/images/podtrack-run-analysis.png" alt="PodTrack run analysis with estimated track in 3D"></td>
+  </tr>
+</table>
+
 **A native macOS motion lab for an AirPod mounted on a Hot Wheels car.** Record motion, inspect the evidence, and reconstruct an experimental track and speed profile using a measured height or track length for scale, or relative units when both are unknown.
 
 Repository/project: `airpods-hotwheels-track`. Application: **PodTrack**. SwiftUI, Core Motion, Swift Charts, SceneKit, Foundation, and AppKit only. No remote service, web UI, third-party runtime, or network dependency.
