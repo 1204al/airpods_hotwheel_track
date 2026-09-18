@@ -3,32 +3,83 @@ import PodTrackCore
 
 struct RecordRunView: View {
     @EnvironmentObject var model: AppModel
+    @State private var inspecting: Int?
+    private var connected: Bool { model.sourceKind == .simulation || model.hasFreshSelectedMotion }
+    private var calibrated: Bool { model.sourceKind == .simulation || model.hasMatchingCalibration }
+    private var nextStep: Int { !connected ? 0 : (!calibrated && !model.recordRawOnly ? 1 : 2) }
+    private var visibleStep: Int { model.recording ? 2 : (inspecting ?? nextStep) }
+
     var body: some View {
         ScrollView {
-            recordingContent
-        }
-    }
-    private var recordingContent: some View {
-        VStack(alignment:.leading,spacing:14) {
-            VStack(alignment:.leading,spacing:4) {
-                Text("Record a run").font(.system(size:24,weight:.semibold,design:.rounded))
-                Text(model.sourceKind == .simulation ? "Choose a shape and height, then simulate a saved run." : "Enter a height or choose Unknown. Connect your AirPod, calibrate and record.")
-                    .font(.callout).foregroundStyle(.secondary)
-            }
-            HStack(alignment:.top,spacing:14) {
-                VStack(spacing:12) {
+            VStack(alignment:.leading,spacing:24) {
+                VStack(alignment:.leading,spacing:6) {
+                    Text("Record a run").font(.system(size:30,weight:.semibold,design:.rounded))
+                    Text("Connect your AirPod, calibrate the mount, then record.").foregroundStyle(.secondary)
+                }
+                HStack(spacing:16) {
+                    step(0,"Connect",complete:connected)
+                    Divider().frame(height:24)
+                    step(1,"Calibrate",complete:calibrated)
+                    Divider().frame(height:24)
+                    step(2,"Record",complete:false)
+                }.padding(.vertical,12)
+                if model.sourceKind == .airPods {
+                    HStack(spacing:12) {
+                        Image(systemName:connected ? "checkmark.circle.fill" : "airpodspro").foregroundStyle(PodTheme.teal)
+                        Text("\(model.recordingSourceLabel) · \(connected ? "Connected" : "Waiting for motion")")
+                        Text(calibrated ? "Calibration ready" : model.recordRawOnly ? "Raw only · no 3D" : "Calibration needed").foregroundStyle(.secondary)
+                        Spacer()
+                        Button("Change") { inspecting = 0 }.disabled(model.recording)
+                        if calibrated {
+                            Button("Recalibrate") { model.recalibrateSelectedBud(); inspecting = 1 }
+                                .disabled(model.recording)
+                        }
+                    }.padding(16).background(PodTheme.teal.opacity(0.08),in:RoundedRectangle(cornerRadius:12))
+                }
+                if visibleStep == 0 {
+                    VStack(alignment:.leading,spacing:16) {
+                        Text("1 · Connect your AirPod").font(.title2.bold())
+                        RecordingBudPicker().frame(maxWidth:420)
+                        HeadphoneConnectionPanel(compact:true)
+                        if connected { Button("Continue to calibration") { inspecting = calibrated ? 2 : 1 }.buttonStyle(.borderedProminent) }
+                    }
+                } else if visibleStep == 1 {
+                    VStack(alignment:.leading,spacing:12) {
+                        Text("2 · Calibrate the mount").font(.title2.bold())
+                        Text("Keep the AirPod fixed to the car. Capture the two poses below. Recalibrate whenever the AirPod moves on the car.").foregroundStyle(.secondary)
+                        MountingCalibrationPanel()
+                        if calibrated || model.recordRawOnly {
+                            Button("Continue to recording") { inspecting = 2 }.buttonStyle(.borderedProminent)
+                        }
+                    }
+                } else {
                     RecordingControlsPanel()
-                    RunHeightSetupView()
-                    RunSetupView()
-                }.frame(maxWidth:.infinity)
-                VStack(spacing:12) {
-                    HeadphoneConnectionPanel(compact:true)
-                    MountingCalibrationPanel()
-                }.frame(maxWidth:.infinity)
-            }
-            Text("Track shape, speed and distances are estimates. Record cars one at a time; compare saved runs afterward.")
-                .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal:false,vertical:true)
-        }.padding(20).frame(maxWidth:.infinity,alignment:.topLeading)
+                }
+                if visibleStep == 2 {
+                    VStack(alignment:.leading,spacing:12) {
+                        RunSetupView()
+                        RunHeightSetupView()
+                    }
+                }
+                Text("Track shape, speed and distances are estimates. Record cars one at a time; compare saved runs afterward.")
+                    .font(.caption).foregroundStyle(.secondary)
+            }.padding(32).frame(maxWidth:1100).frame(maxWidth:.infinity)
+        }
+        .onChange(of:model.hasMatchingCalibration) { old,new in if !old && new { inspecting = nil } }
+        .onChange(of:connected) { old,new in if !old && new && inspecting == 0 { inspecting = nil } }
+        .onChange(of:model.selectedBud) { _,_ in inspecting = nil }
+        .onChange(of:model.sourceKind) { _,_ in inspecting = nil }
+    }
+    private func step(_ index:Int,_ title:String,complete:Bool) -> some View {
+        Button { inspecting = index } label: {
+            VStack(spacing:8) {
+                Image(systemName:complete ? "checkmark.circle.fill" : "\(index+1).circle")
+                    .font(.system(size:30)).foregroundStyle(complete || visibleStep == index ? PodTheme.teal : .secondary)
+                Text(title).font(.headline).foregroundStyle(visibleStep == index ? .primary : .secondary)
+            }.frame(maxWidth:.infinity).padding(8)
+                .background(visibleStep == index ? PodTheme.teal.opacity(0.06) : .clear,in:RoundedRectangle(cornerRadius:10))
+        }.buttonStyle(.plain).disabled(model.recording)
+            .accessibilityLabel("\(title), \(complete ? "complete" : visibleStep == index ? "current step" : "not complete")")
     }
 }
 
@@ -148,32 +199,30 @@ struct RecordingControlsPanel: View {
         return model.hasMatchingCalibration ? "Using \(model.recordingSourceLabel) calibration" : "Calibrate \(model.recordingSourceLabel) to enable recording"
     }
     var body: some View {
-        Panel(title:model.recording ? "Recording · \(model.recordingSourceLabel)" : "Record",spacing:10,padding:14) {
-            if !isSimulation { RecordingBudPicker().labelsHidden() }
-            else {
+        Panel(title:model.recording ? "Recording · \(model.recordingSourceLabel)" : blocked ? "Complete setup to record" : "Ready to record",spacing:16,padding:24) {
+            if isSimulation {
                 Picker("Track shape",selection:$model.simulationProfile) {
                     ForEach(SimulationProfile.allCases,id:\.self) { Text($0.rawValue).tag($0) }
                 }.disabled(model.recording)
                 Toggle("Include a short jump",isOn:$model.simulationIncludesJump).font(.caption).disabled(model.recording)
             }
-            HStack(spacing:12) {
-                VStack(alignment:.leading,spacing:2) {
+            VStack(spacing:18) {
+                VStack(alignment:.center,spacing:6) {
                     HStack(spacing:6) {
                         Circle().fill(model.recording ? .red : .secondary).frame(width:7,height:7)
                         Text("\(formatted(model.recording ? model.recordingDuration : 0)) s")
-                            .font(.system(size:26,weight:.medium,design:.monospaced)).fixedSize()
+                            .font(.system(size:64,weight:.medium,design:.monospaced)).fixedSize()
                     }
                     Text("\(model.recording ? model.recordedCount : 0) samples").font(.caption).foregroundStyle(.secondary)
                 }
-                Spacer(minLength:0)
-                Button(model.recording ? "Stop & save" : isSimulation ? "Simulate & record" : "Record \(model.recordingSourceLabel)",systemImage:model.recording ? "stop.fill" : "record.circle") {
+                Button(model.recording ? "Stop & save" : isSimulation ? "Simulate & record" : "Start recording",systemImage:model.recording ? "stop.fill" : "record.circle") {
                     if model.recording { model.finishRecording() }
                     else if isSimulation { model.recordSimulation() }
                     else { model.startRecording() }
-                }.buttonStyle(.borderedProminent).controlSize(.large).tint(model.recording ? .red : PodTheme.teal)
+                }.buttonStyle(.borderedProminent).controlSize(.extraLarge).tint(model.recording ? .red : PodTheme.teal)
                     .disabled(blocked).accessibilityLabel(model.recording ? "Stop and save \(model.recordingSourceLabel) run" : isSimulation ? "Simulate and record a full run" : "Record \(model.recordingSourceLabel)")
-            }
-            Text(readiness).font(.caption).foregroundStyle(blocked || (model.recordRawOnly && !isSimulation) ? PodTheme.amber : PodTheme.teal)
+            }.frame(maxWidth:.infinity).padding(.vertical,16)
+            Text(readiness).frame(maxWidth:.infinity).font(.caption).foregroundStyle(blocked || (model.recordRawOnly && !isSimulation) ? PodTheme.amber : PodTheme.teal)
                 .fixedSize(horizontal:false,vertical:true)
             Text("\(model.recording ? "Run" : "Next run"): \(model.setup.carName) · \(model.recordingSourceLabel)")
                 .font(.caption).foregroundStyle(.secondary).lineLimit(2)
@@ -252,8 +301,8 @@ struct RecordingHelpButton: View {
                     Text(title).font(.headline)
                     if topic == .calibration {
                         Text("Calibration teaches PodTrack which way the car points. Keep the selected AirPod rigidly fixed to the car for both poses.")
-                        Text("1. Put all four wheels on a level surface. Hold still for 1 second, then Capture level.")
-                        Text("2. Raise only the front wheels by 15–45°, with no sideways tilt. Hold for 1 second, then Capture & save.")
+                        Text("1. Put all four wheels on a level surface. Click Capture level, then hold still until confirmation.")
+                        Text("2. Raise only the front wheels by 15–45°, with no sideways tilt. Click Capture & save, then hold still until confirmation.")
                         Text("Each side saves independently and reloads when selected. Recalibrate that side after moving the mount or using a different AirPods pair. Older runs keep their original calibration.")
                     } else {
                         Text("Start recording while the car is held still. Wait 1 second, release it, then keep recording for 1 second after it stops.")

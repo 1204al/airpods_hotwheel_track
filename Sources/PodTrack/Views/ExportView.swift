@@ -50,14 +50,22 @@ struct RunExportSheet: View {
     @EnvironmentObject private var model: AppModel
     @Environment(\.dismiss) private var dismiss
     let run: RunSession
+    /// Set to export only part of the recording's elapsed time.
+    var window: TimeWindow? = nil
     @State private var format: RunExportFormat = .csv
     @State private var selected: Set<RunExportDataset> = [.raw]
     @State private var exporting = false
     @State private var error: String?
     var body: some View {
         VStack(alignment:.leading,spacing:18) {
-            Text("Export run").font(.title2.bold())
+            Text(window == nil ? "Export run" : "Export part of a run").font(.title2.bold())
             Text(run.displayName).foregroundStyle(.secondary)
+            if let window {
+                Label("Only \(window.label) · \(formatted(window.duration)) s of \(formatted(run.duration)) s",systemImage:"scissors")
+                    .font(.callout).foregroundStyle(PodTheme.teal)
+                Text("Rows outside this range are left out. Values are unchanged: the reconstruction, its scale and its endpoint assumptions still come from the whole recording, and distance along the path keeps counting from the run's start. Each file records the range.")
+                    .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal:false,vertical:true)
+            }
             Picker("Format",selection:$format) {
                 ForEach(RunExportFormat.allCases,id:\.self) { Text($0.rawValue).tag($0) }
             }.pickerStyle(.segmented)
@@ -92,14 +100,16 @@ struct RunExportSheet: View {
     private func export() {
         let datasets = RunExportDataset.all.filter { selected.contains($0) }
         let zipped = datasets.count > 1
-        let name = zipped ? "\(run.exportBasename)-export.zip" : "\(run.exportBasename)-\(datasets[0].suffix).\(format.fileExtension)"
+        let range = window.map { "-\($0.fileSuffix)" } ?? ""
+        let name = zipped ? "\(run.exportBasename)\(range)-export.zip"
+                          : "\(run.exportBasename)-\(datasets[0].suffix)\(range).\(format.fileExtension)"
         guard let destination = SaveExporter.destination(name:name,format:format,zipped:zipped) else { return }
         exporting = true; error = nil
         let cache = AnalysisDiskCache(directory:model.store.directory.appendingPathComponent("AnalysisCache"))
-        let run = run, format = format
+        let run = run, format = format, window = window
         Task {
             let outcome = await Task.detached(priority:.userInitiated) {
-                try RunExportWriter.write(run:run,datasets:datasets,format:format,cache:cache,destination:destination)
+                try RunExportWriter.write(run:run,datasets:datasets,format:format,cache:cache,destination:destination,window:window)
             }.result
             exporting = false
             switch outcome {

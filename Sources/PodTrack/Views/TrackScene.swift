@@ -25,9 +25,12 @@ import PodTrackCore
     }
 
     static func make(result: AnalysisResult, options: TrackSceneOptions = .init()) -> SCNScene {
-        let points = result.points, scene = baseScene(points:result.points)
+        // The datum stays the whole run: ground, H, grid, camera span and marker sizes.
+        // Only the road, its supports, its events and its end markers follow the window.
+        let datum = result.points, scene = baseScene(points:datum)
+        let points = options.window.map { window in datum.filter { window.contains($0.time) } } ?? datum
         guard let first = points.first, let last = points.last else { return scene }
-        let b = bounds(points), radius = result.isRelative ? b.span*0.004 : max(0.008,b.span*0.004)
+        let b = bounds(datum), radius = result.isRelative ? b.span*0.004 : max(0.008,b.span*0.004)
         let crossSectionScale = result.isRelative ? b.span*0.5 : 1
         let frames = TrackRibbon.frames(points:points)
         for rails in [false,true] {
@@ -37,7 +40,7 @@ import PodTrackCore
             node.categoryBitMask = trackCategory
             scene.rootNode.addChildNode(node)
         }
-        let planes = makePlanes(points:points,height:result.metrics.enteredVerticalDrop ?? result.metrics.reconstructedHeightRange,
+        let planes = makePlanes(points:datum,height:result.metrics.enteredVerticalDrop ?? result.metrics.reconstructedHeightRange,
                                 isRange:result.heightConstraint == .heightRange || result.metrics.enteredVerticalDrop == nil,
                                 isRelative:result.isRelative,measuredHeight:result.metrics.enteredVerticalDrop != nil)
         planes.isHidden = !options.showPlanes
@@ -51,13 +54,16 @@ import PodTrackCore
             }
         }
         scene.rootNode.addChildNode(supports)
-        for (point,name,color) in [(first,"START",cyan),(last,"FINISH",orange)] {
+        // A window shows part of the run, so its ends are not the run's start and finish.
+        let trimmed = options.window != nil && points.count != datum.count
+        for (point,name,color) in [(first,trimmed ? "FROM" : "START",cyan),(last,trimmed ? "TO" : "FINISH",orange)] {
             scene.rootNode.addChildNode(marker(at:position(point.position),radius:radius*1.5,color:color))
             scene.rootNode.addChildNode(label(name,at:point.position+Vector3(0,0,b.span*0.045),size:b.span*0.022,color:color))
         }
         let events = SCNNode(); events.name = "events"; events.isHidden = !options.showEvents
         for event in result.segments where [.leftTurn,.rightTurn,.bump,.airborne,.landing].contains(event.kind) {
-            guard let point = TrackSampling.point(at:event.startTime,in:points) else { continue }
+            guard let point = TrackSampling.point(at:event.startTime,in:points),
+                  options.window.map({ $0.contains(event.startTime) }) ?? true else { continue }
             let color: NSColor = event.kind == .airborne ? .systemPurple : event.kind == .landing ? .systemPink : .white
             let node = marker(at:position(point.position+Vector3(0,0,0.015*crossSectionScale)),radius:radius,color:color)
             node.name = event.kind.rawValue; events.addChildNode(node)

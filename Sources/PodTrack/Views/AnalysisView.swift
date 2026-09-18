@@ -20,7 +20,7 @@ struct RunPicker: View {
           HStack { ReconstructionMethodPicker(); Spacer(); RecentlyDeletedButton() }
           DeletedRecordingNotice()
         }.onChange(of:model.selectedRunID) { _,_ in
-            model.cursorTime = 0
+            model.cursorTime = 0; model.timeWindow = nil
             if let run = model.selectedRun { model.ensureAnalysis(run) }
         }.onAppear { if let run = model.selectedRun { model.ensureAnalysis(run) } }
     }
@@ -78,8 +78,8 @@ struct AnalysisView: View {
                             VStack(spacing:16) {
                                 TrackExplorerView(run:run,result:result,sceneHeight:350,renderedScene:renderedScene).id("\(run.id)-\(result.algorithmVersion)")
                                 HStack(spacing:16) {
-                                    Panel(title:"Top-down XY") { TrackTopDownView(points:result.points,selectedTime:model.cursorTime,isRelative:result.isRelative) }
-                                    Panel(title:"Side profile") { TrackSideProfileView(points:result.points,selectedTime:model.cursorTime,unit:result.distanceUnit) }
+                                    Panel(title:"Top-down XY") { TrackTopDownView(points:model.windowedPoints(result),selectedTime:model.cursorTime,isRelative:result.isRelative) }
+                                    Panel(title:"Side profile") { TrackSideProfileView(points:model.windowedPoints(result),selectedTime:model.cursorTime,unit:result.distanceUnit) }
                                 }
                             }.frame(maxWidth:.infinity)
                         }
@@ -119,7 +119,8 @@ struct AnalysisView: View {
     }
     private func scrubber(_ result: AnalysisResult) -> some View {
         Panel(title:"Synchronized inspection",subtitle:"\(formatted(model.cursorTime)) s") {
-            Slider(value:$model.cursorTime,in:0...max(0.01,result.metrics.recordingDuration))
+            Text("The play line under the 3D view moves this cursor and selects the shown range.")
+                .font(.caption).foregroundStyle(.secondary)
             if let point = result.points.min(by:{abs($0.time-model.cursorTime)<abs($1.time-model.cursorTime)}) {
                 HStack {
                     Text("Est. speed \(formatted(point.speed)) \(result.speedUnit)")
@@ -205,11 +206,10 @@ struct TrackVisualizationView: View {
                     if run.source == .simulation { Notice(text:"SIMULATED RUN — all source motion was generated.") }
                     EstimateReviewPanel(run:run,result:result) { editRun = run }
                     TrackExplorerView(run:run,result:result,sceneHeight:460,renderedScene:renderedScene).id("\(run.id)-\(result.algorithmVersion)")
-                    Slider(value:$model.cursorTime,in:0...max(0.01,run.duration))
                     Text("\(formatted(model.cursorTime)) s · drag the 3D view to orbit; scroll to zoom").font(.caption).foregroundStyle(.secondary)
                     HStack(spacing:16) {
-                        Panel(title:"Top-down XY") { TrackTopDownView(points:result.points,selectedTime:model.cursorTime,isRelative:result.isRelative).frame(height:230) }
-                        Panel(title:"Distance vs height") { TrackSideProfileView(points:result.points,selectedTime:model.cursorTime,unit:result.distanceUnit) }
+                        Panel(title:"Top-down XY") { TrackTopDownView(points:model.windowedPoints(result),selectedTime:model.cursorTime,isRelative:result.isRelative).frame(height:230) }
+                        Panel(title:"Distance vs height") { TrackSideProfileView(points:model.windowedPoints(result),selectedTime:model.cursorTime,unit:result.distanceUnit) }
                     }
                 } else if let run = model.selectedRun { AnalysisUnavailableView(run:run) }
                 else { ContentUnavailableView("Record a calibrated run first",systemImage:"cube.transparent") }

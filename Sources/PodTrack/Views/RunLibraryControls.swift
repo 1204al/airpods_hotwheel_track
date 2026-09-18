@@ -33,14 +33,18 @@ struct DeleteRecordingButton: View {
 
 struct DeletedRecordingNotice: View {
     @EnvironmentObject private var model: AppModel
+    private var justDeleted: [RunSession] {
+        model.lastDeletedRunIDs.compactMap { id in model.deletedRuns.first(where:{$0.id == id}) }
+    }
     var body: some View {
-        if let id = model.lastDeletedRunID, let run = model.deletedRuns.first(where:{$0.id == id}) {
+        if !justDeleted.isEmpty {
             HStack(spacing:12) {
-                Label("\(run.carDisplayName) moved to Recently Deleted",systemImage:"trash")
-                    .lineLimit(2)
+                Label(justDeleted.count == 1 ? "\(justDeleted[0].carDisplayName) moved to Recently Deleted"
+                                             : "\(justDeleted.count) recordings moved to Recently Deleted",
+                      systemImage:"trash").lineLimit(2)
                 Spacer(minLength:0)
-                Button("Undo") { model.restoreRecording(run) }
-                Button { model.lastDeletedRunID = nil } label: { Image(systemName:"xmark") }
+                Button("Undo") { model.restoreLastDeleted() }
+                Button { model.lastDeletedRunIDs = [] } label: { Image(systemName:"xmark") }
                     .buttonStyle(.plain).accessibilityLabel("Dismiss deletion notice")
             }.font(.callout).padding(12).background(PodTheme.teal.opacity(0.08),in:RoundedRectangle(cornerRadius:8))
         }
@@ -65,6 +69,9 @@ struct RecentlyDeletedView: View {
             HStack {
                 Text("Recently Deleted").font(.title2.bold())
                 Spacer()
+                Button("Restore all \(model.deletedRuns.count)",systemImage:"arrow.uturn.backward") {
+                    model.restoreRecordings(model.deletedRuns)
+                }.disabled(model.deletedRuns.isEmpty)
                 Button("Done") { dismiss() }.keyboardShortcut(.cancelAction)
             }
             Text("Removed recordings are kept on this Mac until you restore them. Their raw samples, calibration and saved settings are retained.")

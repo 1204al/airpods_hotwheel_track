@@ -10,6 +10,12 @@ struct TrackExplorerView: View {
     @State private var options = TrackSceneOptions()
     @State private var cameraReset = 0
     @State private var isPlaying = false
+    @State private var exportingWindow = false
+
+    private var window: TimeWindow { model.timeWindow ?? .init(start:0,end:max(0.01,run.duration)) }
+    private var windowedPoints: [TrackPoint] {
+        model.timeWindow.map { w in result.points.filter { w.contains($0.time) } } ?? result.points
+    }
 
     var body: some View {
         Panel(title:"Estimated track in 3D",subtitle:"Drag to orbit · scroll to zoom") {
@@ -31,14 +37,14 @@ struct TrackExplorerView: View {
             if let renderedScene {
                 Image(nsImage:renderedScene).resizable().aspectRatio(contentMode:.fit).frame(height:sceneHeight).frame(maxWidth:.infinity)
             } else {
-              Track3DView(result:result,selectedTime:model.cursorTime,options:options,selection:model.rulerSelection,
-                        isMeasuring:model.rulerEnabled,cameraReset:cameraReset) { time in
+              Track3DView(result:result,selectedTime:model.cursorTime,options:sceneOptions,selection:model.rulerSelection,
+                        isMeasuring:model.rulerEnabled,cameraReset:cameraReset,cameraPoints:windowedPoints) { time in
                 model.rulerSelection.select(time); model.cursorTime = time
             }.frame(height:sceneHeight).clipShape(RoundedRectangle(cornerRadius:8))
             }
             HStack {
                 Button(isPlaying ? "Pause" : "Play run",systemImage:isPlaying ? "pause.fill" : "play.fill") {
-                    if !isPlaying, model.cursorTime>=run.duration-0.01 { model.cursorTime = 0 }
+                    if !isPlaying, model.cursorTime>=window.end-0.01 { model.cursorTime = window.start }
                     isPlaying.toggle()
                 }
                 Button(model.rulerEnabled ? "Done measuring" : "Measure A–B",systemImage:"ruler") { model.rulerEnabled.toggle() }
@@ -51,20 +57,32 @@ struct TrackExplorerView: View {
                 }
                 Spacer(minLength:0)
             }
+            RunTimelineView(segments:result.segments,duration:max(0.01,run.duration),
+                            cursorTime:$model.cursorTime,window:$model.timeWindow) { exportingWindow = true }
+            if model.timeWindow != nil {
+                Text("3D shows \(formatted(window.duration)) s of this run. Ground, H and the grid still come from the whole recording; the estimates were not refitted to this range.")
+                    .font(.caption).foregroundStyle(PodTheme.amber).fixedSize(horizontal:false,vertical:true)
+            }
             if model.rulerEnabled {
                 TrackRulerControls(points:result.points,groundZ:result.groundZ,selection:$model.rulerSelection,cursorTime:$model.cursorTime,isRelative:result.isRelative)
             }
             if options.appearance == .speed { SpeedLegend(maximum:result.metrics.estimatedMaximumSpeed,unit:result.speedUnit) }
         }.task(id:isPlaying) {
             guard isPlaying else { return }
-            let started = ProcessInfo.processInfo.systemUptime, startTime = model.cursorTime
+            let started = ProcessInfo.processInfo.systemUptime, startTime = max(model.cursorTime,window.start)
             while !Task.isCancelled {
                 let time = startTime+ProcessInfo.processInfo.systemUptime-started
-                model.cursorTime = min(run.duration,time)
-                if time>=run.duration { isPlaying = false; break }
+                model.cursorTime = min(window.end,time)
+                if time>=window.end { isPlaying = false; break }
                 do { try await Task.sleep(nanoseconds:33_000_000) } catch { break }
             }
-        }
+        }.onChange(of:model.timeWindow) { _,_ in model.cursorTime = window.clamping(model.cursorTime) }
+            .sheet(isPresented:$exportingWindow) {
+                RunExportSheet(run:run,window:model.timeWindow).environmentObject(model)
+            }
+    }
+    private var sceneOptions: TrackSceneOptions {
+        var scene = options; scene.window = model.timeWindow; return scene
     }
 }
 

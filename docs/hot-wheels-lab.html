@@ -1,0 +1,1401 @@
+<!doctype html>
+<html lang="uk">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<!--
+  Інтерактивна модель траси Hot Wheels — симуляція руху машинки
+  (притиск, бічна сила, поріг перекидання, розподіл енергії).
+
+  Опубліковано як артефакт: https://claude.ai/artifact/7cbpYDhL6zyBqDpAobgota
+  Оригінал створено 2026-09-16. Цей файл — той самий вміст із доданою
+  стандартною HTML-оболонкою, щоб відкривався локально в браузері.
+-->
+</head>
+<body>
+<title>Полігон Hot Wheels</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap">
+
+<style>
+:root{
+  --bg:#E9ECEF; --surface:#FDFDFC; --surface-2:#F2F4F6; --line:#D2D8DF; --line-soft:#E2E7EC;
+  --ink:#14181E; --ink-2:#414B58; --muted:#6B7684;
+  --track:#E85D1F; --track-dark:#B5410E; --track-glow:rgba(232,93,31,.16);
+  --c-speed:#0F6FA8; --c-fric:#C08A1E; --c-load:#0E8A6A;
+  --ok:#1D7A4C; --bad:#B3341F; --sky:#DCE2E8; --ground:#E4E9EE; --shade:rgba(20,24,30,.15);
+  --shadow:0 1px 2px rgba(20,24,30,.06), 0 6px 18px rgba(20,24,30,.05);
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#101419; --surface:#181D23; --surface-2:#1F252C; --line:#2C343D; --line-soft:#242B33;
+    --ink:#E7EBF0; --ink-2:#B3BDC9; --muted:#8792A0;
+    --track:#F0722F; --track-dark:#8E3510; --track-glow:rgba(240,114,47,.13);
+    --c-speed:#3E93C8; --c-fric:#B98B2C; --c-load:#22A382;
+    --ok:#3EA772; --bad:#DE6A51; --sky:#1B2129; --ground:#232B34; --shade:rgba(0,0,0,.45);
+    --shadow:0 1px 2px rgba(0,0,0,.4), 0 6px 20px rgba(0,0,0,.28);
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#101419; --surface:#181D23; --surface-2:#1F252C; --line:#2C343D; --line-soft:#242B33;
+  --ink:#E7EBF0; --ink-2:#B3BDC9; --muted:#8792A0;
+  --track:#F0722F; --track-dark:#8E3510; --track-glow:rgba(240,114,47,.13);
+  --c-speed:#3E93C8; --c-fric:#B98B2C; --c-load:#22A382;
+  --ok:#3EA772; --bad:#DE6A51; --sky:#1B2129; --ground:#232B34; --shade:rgba(0,0,0,.45);
+  --shadow:0 1px 2px rgba(0,0,0,.4), 0 6px 20px rgba(0,0,0,.28);
+}
+
+*{box-sizing:border-box}
+body{
+  margin:0; background:var(--bg); color:var(--ink);
+  font-family:'Archivo', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  font-size:15px; line-height:1.5; -webkit-font-smoothing:antialiased;
+}
+.wrap{max-width:1160px; margin:0 auto; padding-inline:16px; padding-block:24px 56px;}
+.mono{font-family:'IBM Plex Mono', ui-monospace, 'SF Mono', Menlo, monospace; font-variant-numeric:tabular-nums;}
+
+header{display:flex; flex-wrap:wrap; align-items:flex-end; gap:12px 20px; margin-bottom:18px;}
+h1{font-size:clamp(26px,4.4vw,38px); font-weight:700; letter-spacing:-.02em; margin:0; text-wrap:balance; line-height:1.05;}
+h1 .hw{color:var(--track);}
+.lede{margin:0; color:var(--muted); font-size:14px; max-width:58ch; flex:1 1 320px;}
+
+section{margin-top:22px;}
+.eyebrow{font-size:11px; font-weight:600; letter-spacing:.1em; text-transform:uppercase; color:var(--muted); margin:0 0 9px;}
+.panel{background:var(--surface); border:1px solid var(--line); border-radius:10px; box-shadow:var(--shadow);}
+
+/* stage */
+.stage{padding:0; overflow:hidden; position:relative;}
+#stage{display:block; width:100%; height:420px; background:var(--sky); cursor:grab; touch-action:none;}
+#stage:active{cursor:grabbing;}
+@media (max-width:640px){ #stage{height:300px;} }
+.hintdrag{
+  position:absolute; top:10px; right:12px; font-size:11px; color:var(--muted);
+  background:color-mix(in srgb, var(--surface) 80%, transparent); padding:3px 8px; border-radius:20px;
+  pointer-events:none;
+}
+.piecelist{
+  border-top:1px solid var(--line); padding:9px 14px; font-size:11.5px; color:var(--muted);
+  display:flex; flex-wrap:wrap; gap:4px 10px; align-items:baseline;
+}
+.piecelist b{color:var(--ink-2); font-weight:500;}
+.piecelist .sep{color:var(--line); font-style:normal;}
+.pc{
+  cursor:pointer; border-radius:4px; padding:1px 4px; margin:0 -1px;
+  transition:background .1s, color .1s; color:var(--muted);
+}
+.pc:hover{background:var(--surface-2); color:var(--ink);}
+.pc.on{background:var(--track); color:#fff; font-weight:600;}
+.pcinfo{
+  flex:1 0 100%; margin-top:6px; padding-top:7px; border-top:1px dashed var(--line);
+  color:var(--ink-2); line-height:1.6;
+  white-space:nowrap; overflow-x:auto; overflow-y:hidden;
+  scrollbar-width:thin;
+}
+.pcinfo .pchint{color:var(--muted);}
+.pcinfo b{color:var(--ink); font-weight:600;}
+
+.verdict{display:flex; flex-wrap:wrap; align-items:baseline; gap:6px 12px; border-top:1px solid var(--line); padding:11px 14px; font-size:13.5px; line-height:1.45;}
+.badge{font-size:11px; font-weight:700; letter-spacing:.07em; text-transform:uppercase; padding:3px 8px; border-radius:4px; white-space:nowrap;}
+.badge.ok{background:color-mix(in srgb, var(--ok) 15%, transparent); color:var(--ok);}
+.badge.bad{background:color-mix(in srgb, var(--bad) 15%, transparent); color:var(--bad);}
+.badge.fly{background:var(--track-glow); color:var(--track-dark);}
+:root[data-theme="dark"] .badge.fly, :root:not([data-theme="light"]) .badge.fly{color:var(--track);}
+@media (prefers-color-scheme: light){ :root:not([data-theme="dark"]) .badge.fly{color:var(--track-dark);} }
+.verdict-text{color:var(--ink-2); flex:1 1 260px;}
+.verdict-text b{color:var(--ink); font-weight:600;}
+
+.transport{display:flex; flex-wrap:wrap; align-items:center; gap:10px; border-top:1px solid var(--line); padding:10px 14px;}
+button{font-family:inherit; font-size:14px; cursor:pointer;}
+.play{background:var(--track); color:#fff; border:none; border-radius:7px; padding:8px 18px; font-weight:600;}
+.play:hover{background:var(--track-dark);}
+.ghost{background:transparent; color:var(--ink-2); border:1px solid var(--line); border-radius:7px; padding:8px 14px; font-weight:500;}
+.ghost:hover{background:var(--surface-2); color:var(--ink);}
+.seg{display:inline-flex; border:1px solid var(--line); border-radius:7px; overflow:hidden;}
+.seg button{background:transparent; border:none; padding:7px 11px; color:var(--muted); font-weight:500; font-size:13px;}
+.seg button[aria-pressed="true"]{background:var(--surface-2); color:var(--ink); font-weight:600;}
+.seglabel{font-size:12px; color:var(--muted); margin-right:-3px;}
+.spacer{flex:1 1 auto;}
+.clock{font-size:13px; color:var(--muted);}
+:focus-visible{outline:2px solid var(--c-speed); outline-offset:2px;}
+
+.bench{display:grid; grid-template-columns:1fr 1fr; gap:14px;}
+@media (max-width:860px){ .bench{grid-template-columns:1fr;} }
+.card{padding:14px;}
+.card h3{margin:0 0 12px; font-size:12px; font-weight:600; letter-spacing:.09em; text-transform:uppercase; color:var(--muted);}
+
+.shapes{display:grid; grid-template-columns:repeat(5,1fr); gap:6px; margin-bottom:14px;}
+@media (max-width:520px){ .shapes{grid-template-columns:repeat(3,1fr);} }
+.shape{background:var(--surface-2); border:1px solid transparent; border-radius:7px; padding:6px 3px 5px; display:flex; flex-direction:column; align-items:center; gap:3px;}
+.shape svg{display:block; width:100%; height:auto; max-width:64px;}
+.shape span{font-size:10.5px; color:var(--muted); line-height:1.15; text-align:center;}
+.shape[aria-pressed="true"]{border-color:var(--track); background:var(--track-glow);}
+.shape[aria-pressed="true"] span{color:var(--ink); font-weight:600;}
+.shape:hover{border-color:var(--line);}
+
+.tracks{display:grid; grid-template-columns:repeat(2,1fr); gap:6px; margin-bottom:14px;}
+@media (max-width:420px){ .tracks{grid-template-columns:1fr;} }
+.trk{background:var(--surface-2); border:1px solid transparent; border-radius:7px; padding:8px 10px; text-align:left; color:var(--ink-2); font-size:13px; font-weight:500;}
+.trk small{display:block; color:var(--muted); font-size:11px; font-weight:400; margin-top:1px;}
+.trk[aria-pressed="true"]{border-color:var(--track); background:var(--track-glow); color:var(--ink); font-weight:600;}
+.trk:hover{border-color:var(--line);}
+
+.field{display:grid; grid-template-columns:1fr auto; gap:2px 10px; align-items:baseline; margin-bottom:11px;}
+.field:last-child{margin-bottom:0;}
+.field label{font-size:13px; color:var(--ink-2);}
+.field .val{font-size:13px; font-weight:600; color:var(--ink);}
+.field input[type=range]{grid-column:1/-1; width:100%; accent-color:var(--track); margin:2px 0 0; height:18px;}
+.field .hint{grid-column:1/-1; font-size:11.5px; color:var(--muted); margin-top:-1px;}
+.field.tight{margin-bottom:8px;}
+
+.podrow{display:flex; align-items:center; gap:9px; margin-top:12px; padding-top:12px; border-top:1px dashed var(--line); font-size:13px; color:var(--ink-2);}
+.podrow input{accent-color:var(--track); width:16px; height:16px; margin:0;}
+.podrow .note{color:var(--muted); font-size:11.5px;}
+
+.tiles{display:grid; grid-template-columns:repeat(4,1fr); gap:10px;}
+@media (max-width:700px){ .tiles{grid-template-columns:repeat(2,1fr);} }
+.tile{padding:11px 13px 12px;}
+.tile .k{font-size:11px; letter-spacing:.05em; text-transform:uppercase; color:var(--muted); display:block;}
+.tile .v{font-size:23px; font-weight:600; letter-spacing:-.015em; display:block; margin-top:3px; line-height:1.1;}
+.tile .u{font-size:12px; color:var(--muted); font-weight:400; margin-left:2px;}
+.tile .sub{font-size:11.5px; color:var(--muted); display:block; margin-top:1px;}
+
+.charts{display:grid; grid-template-columns:1fr 1fr; gap:14px;}
+@media (max-width:860px){ .charts{grid-template-columns:1fr;} }
+.chart-head{display:flex; align-items:baseline; justify-content:space-between; gap:10px; margin-bottom:4px; flex-wrap:wrap;}
+.chart-head h4{margin:0; font-size:13.5px; font-weight:600;}
+.chart-head .sub{font-size:11.5px; color:var(--muted);}
+.klegend{display:flex; gap:12px; flex-wrap:wrap; margin-bottom:2px;}
+.klegend span{display:flex; align-items:center; gap:5px; font-size:11.5px; color:var(--ink-2);}
+.klegend i{width:9px; height:9px; border-radius:2px; display:block;}
+.plot{position:relative;}
+.plot canvas{display:block; width:100%; height:172px; touch-action:none;}
+.tip{position:absolute; pointer-events:none; opacity:0; transition:opacity .09s; background:var(--ink); color:var(--surface); border-radius:5px; padding:5px 8px; font-size:11.5px; line-height:1.35; white-space:nowrap; transform:translate(-50%,-115%); z-index:3;}
+.tip.on{opacity:1;}
+
+.ebar{display:flex; gap:2px; height:30px; margin:4px 0 10px; border-radius:5px; overflow:hidden;}
+.ebar div{min-width:2px;}
+.elegend{display:flex; flex-wrap:wrap; gap:6px 20px;}
+.elegend .it{display:flex; align-items:baseline; gap:7px; font-size:12.5px; color:var(--ink-2);}
+.elegend .sw{width:10px; height:10px; border-radius:2px; flex:none; transform:translateY(1px);}
+.elegend .n{font-weight:600; color:var(--ink);}
+
+textarea{width:100%; min-height:150px; resize:vertical; background:var(--surface-2); color:var(--ink); border:1px solid var(--line); border-radius:7px; padding:10px 11px; font-family:'IBM Plex Mono', ui-monospace, Menlo, monospace; font-size:12px; line-height:1.55;}
+.io-actions{display:flex; flex-wrap:wrap; gap:8px; align-items:center; margin-top:9px;}
+.io-msg{font-size:12.5px; color:var(--muted);}
+.io-msg.err{color:var(--bad);} .io-msg.good{color:var(--ok);}
+
+.prose{padding:16px 18px;}
+.prose h3{margin:0 0 10px; font-size:14px; font-weight:600;}
+.prose p{margin:0 0 10px; color:var(--ink-2); font-size:13.5px; max-width:68ch;}
+.prose p:last-child{margin-bottom:0;}
+.eq{background:var(--surface-2); border-left:2px solid var(--track); border-radius:0 6px 6px 0; padding:11px 13px; margin:0 0 12px; font-size:12.5px; line-height:1.9; overflow-x:auto;}
+.eq b{color:var(--ink); font-weight:600;}
+.terms{list-style:none; margin:0 0 12px; padding:0; display:grid; gap:5px;}
+.terms li{font-size:13px; color:var(--ink-2); padding-left:15px; position:relative;}
+.terms li::before{content:""; position:absolute; left:0; top:8px; width:6px; height:6px; border-radius:50%; background:var(--track);}
+.terms b{color:var(--ink); font-weight:600;}
+.warn{border-top:1px solid var(--line); margin-top:13px; padding-top:12px; font-size:12.5px; color:var(--muted); max-width:70ch;}
+.warn b{color:var(--ink-2); font-weight:600;}
+.specs{width:100%; border-collapse:collapse; font-size:12.5px; margin-bottom:4px;}
+.specs th{text-align:left; font-weight:600; color:var(--muted); font-size:11px; letter-spacing:.06em; text-transform:uppercase; padding:0 10px 6px 0; border-bottom:1px solid var(--line);}
+.specs td{padding:5px 10px 5px 0; border-bottom:1px solid var(--line-soft); color:var(--ink-2);}
+.specs td:first-child{color:var(--ink); font-weight:500;}
+.tblwrap{overflow-x:auto;}
+@media (prefers-reduced-motion: reduce){ *{transition:none!important;} }
+</style>
+
+<div class="wrap">
+
+<header>
+  <h1>Полігон <span class="hw">Hot Wheels</span></h1>
+  <p class="lede">Траса складається зі справжніх елементів — пряма 30 см, петля ⌀25 см, віраж 90°. Видно, де машинка розганяється, скільки з'їдає борт у повороті і в який момент вона зривається або перекидається.</p>
+</header>
+
+<section>
+  <div class="panel stage">
+    <canvas id="stage"></canvas>
+    <span class="hintdrag">потягни — обернути · колесо — масштаб</span>
+    <div class="piecelist" id="pieces"></div>
+    <div class="verdict">
+      <span id="badge" class="badge ok">Пройшла</span>
+      <span id="verdict" class="verdict-text"></span>
+    </div>
+    <div class="transport">
+      <button class="play" id="play">▶ Запустити</button>
+      <span class="seglabel">Темп</span>
+      <div class="seg" role="group" aria-label="Темп відтворення">
+        <button data-rate="0.2" aria-pressed="false" title="П'ята частина реальної швидкості">0,2×</button>
+        <button data-rate="0.5" aria-pressed="false" title="Половина реальної швидкості">0,5×</button>
+        <button data-rate="0.8" aria-pressed="true" title="Трохи повільніше за реальний час">0,8×</button>
+        <button data-rate="1" aria-pressed="false" title="Реальний час — заїзд триває близько півтори секунди">1×</button>
+      </div>
+      <button class="ghost" id="viewReset">Скинути вид</button>
+      <span class="spacer"></span>
+      <span class="clock mono" id="clock">0,000 с</span>
+    </div>
+  </div>
+</section>
+
+<section>
+  <div class="bench">
+    <div class="panel card">
+      <h3>Машинка</h3>
+      <div class="shapes" id="shapes" role="group" aria-label="Кузов"></div>
+      <div class="field tight">
+        <label for="mass">Маса</label><span class="val mono" id="massV"></span>
+        <input type="range" id="mass" min="22" max="75" step="1">
+      </div>
+      <div class="field tight">
+        <label for="mu">Тертя в осях</label><span class="val mono" id="muV"></span>
+        <input type="range" id="mu" min="0.006" max="0.070" step="0.001">
+        <span class="hint">Міряється як h/X: висота старту поділена на повний горизонтальний викат.</span>
+      </div>
+      <div class="field tight">
+        <label for="gauge">Колія</label><span class="val mono" id="gaugeV"></span>
+        <input type="range" id="gauge" min="18" max="34" step="0.5">
+      </div>
+      <div class="field tight">
+        <label for="hcg">Висота центру ваги</label><span class="val mono" id="hcgV"></span>
+        <input type="range" id="hcg" min="5" max="26" step="0.5">
+        <span class="hint" id="tipHint"></span>
+      </div>
+      <div class="field tight">
+        <label for="cd">Коефіцієнт опору C<sub>d</sub></label><span class="val mono" id="cdV"></span>
+        <input type="range" id="cd" min="0.25" max="1.10" step="0.01">
+      </div>
+      <div class="field">
+        <label for="area">Лобова площа</label><span class="val mono" id="areaV"></span>
+        <input type="range" id="area" min="2.5" max="12" step="0.1">
+      </div>
+      <label class="podrow">
+        <input type="checkbox" id="pod">
+        <span>Встановити AirPod зверху
+          <span class="note">+5,4 г, +3,0 см² лоба, центр ваги вище на 6 мм</span>
+        </span>
+      </label>
+    </div>
+
+    <div class="panel card">
+      <h3>Траса</h3>
+      <div class="tracks" id="tracks" role="group" aria-label="Траса"></div>
+      <div class="field tight">
+        <label for="drop">Висота старту H</label><span class="val mono" id="dropV"></span>
+        <input type="range" id="drop" min="12" max="150" step="1">
+      </div>
+      <div class="field tight">
+        <label for="slope">Кут спуску</label><span class="val mono" id="slopeV"></span>
+        <input type="range" id="slope" min="15" max="60" step="1">
+      </div>
+      <div class="field tight" id="fLoop">
+        <label for="loopd">Діаметр петлі</label><span class="val mono" id="loopdV"></span>
+        <input type="range" id="loopd" min="12" max="45" step="0.5">
+        <span class="hint">Серійні петлі Track Builder — 25–30 см. На верхівці треба v ≥ √(gR).</span>
+      </div>
+      <div class="field tight" id="fRad">
+        <label for="crad">Радіус повороту</label><span class="val mono" id="cradV"></span>
+        <input type="range" id="crad" min="12" max="50" step="1">
+      </div>
+      <div class="field" id="fBank">
+        <label for="bank">Нахил віражу</label><span class="val mono" id="bankV"></span>
+        <input type="range" id="bank" min="0" max="70" step="1">
+        <span class="hint" id="bankHint"></span>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section>
+  <p class="eyebrow">Телеметрія заїзду</p>
+  <div class="tiles">
+    <div class="panel tile"><span class="k">Макс. швидкість</span><span class="v mono" id="tVmax">—</span></div>
+    <div class="panel tile"><span class="k">Час заїзду</span><span class="v mono" id="tTime">—</span></div>
+    <div class="panel tile"><span class="k">Макс. притиск</span><span class="v mono" id="tGmax">—</span></div>
+    <div class="panel tile"><span class="k">Запас до перекидання</span><span class="v mono" id="tLmax">—</span><span class="sub" id="tLsub"></span></div>
+  </div>
+</section>
+
+<section>
+  <div class="charts">
+    <div class="panel card">
+      <div class="chart-head">
+        <h4>Швидкість уздовж траси</h4>
+        <span class="sub mono" id="sub1"></span>
+      </div>
+      <div class="plot"><canvas id="cSpeed"></canvas><div class="tip" id="tip1"></div></div>
+    </div>
+    <div class="panel card">
+      <div class="chart-head">
+        <h4>Навантаження на машинку</h4>
+        <span class="sub">обидві криві в g</span>
+      </div>
+      <div class="klegend">
+        <span><i style="background:var(--c-load)"></i>притиск до полотна</span>
+        <span><i style="background:var(--c-fric)"></i>бічне на борт</span>
+      </div>
+      <div class="plot"><canvas id="cLoad"></canvas><div class="tip" id="tip2"></div></div>
+    </div>
+  </div>
+</section>
+
+<section>
+  <div class="panel card">
+    <div class="chart-head" style="margin-bottom:8px">
+      <h4>Куди пішла енергія висоти</h4>
+      <span class="sub mono" id="eTotal"></span>
+    </div>
+    <div class="ebar" id="ebar"></div>
+    <div class="elegend" id="elegend"></div>
+  </div>
+</section>
+
+<section>
+  <p class="eyebrow">Параметри</p>
+  <div class="panel card">
+    <textarea id="io" spellcheck="false" aria-label="Параметри у форматі JSON"></textarea>
+    <div class="io-actions">
+      <button class="ghost" id="apply">Застосувати</button>
+      <button class="ghost" id="copy">Копіювати</button>
+      <span class="io-msg" id="ioMsg">Виміряв свою машинку — встав числа сюди.</span>
+    </div>
+  </div>
+</section>
+
+<section>
+  <div class="panel prose">
+    <h3>Що саме рахується</h3>
+    <div class="eq mono">
+      <b>N</b> = m·(κ<sub>n</sub>·v² + g·cos θ·cos φ)&nbsp;&nbsp;&nbsp;притиск до полотна<br>
+      <b>F</b><sub>б</sub> = m·(κ<sub>l</sub>·v² &minus; g·cos θ·sin φ)&nbsp;&nbsp;&nbsp;бічна сила на борт<br>
+      <b>m<sub>екв</sub>·dv/dt</b> = &minus;m·g·sin θ &minus; μ·N &minus; μ<sub>б</sub>·|F<sub>б</sub>| &minus; ½ρC<sub>d</sub>Av²
+    </div>
+    <ul class="terms">
+      <li><b>Три способи злетіти з траси.</b> Притиск падає нижче нуля — полотно вміє тільки штовхати, тож машинка стає снарядом. Або бічна сила перекидає її: це коли |F<sub>б</sub>|/N перевищує <b>колія/(2·h<sub>ЦТ</sub>)</b>. Або просто забракло енергії й вона стала.</li>
+      <li><b>Плоский поворот — найдорожча річ на трасі.</b> Уся бічна сила лягає на борт, і тертя об нього з'їдає енергію пропорційно v²/R. У повороті радіусом 22 см на 2,2 м/с бічне доходить до 2,2 g при вазі 1 g — борт гальмує сильніше, ніж усі осі разом.</li>
+      <li><b>Віраж прибирає майже все.</b> Ідеальний нахил — <b>tan φ = v²/(gR)</b>: тоді бічна сила нуль, борт не тре, і машинка не може перекинутися. Для реальних швидкостей Hot Wheels ідеал виходить 60–75°, тому серійні віражі майже вертикальні.</li>
+      <li><b>Тут нарешті працює центр ваги.</b> У прямій і в петлі висота ЦТ ні на що не впливає. У повороті вона визначає поріг перекидання — і саме тому AirPod зверху такий шкідливий: він підіймає ЦТ на 6 мм і зрізає запас майже вдвічі.</li>
+      <li><b>κ<sub>n</sub> і κ<sub>l</sub></b> — це та сама кривизна траси, розкладена на нормаль до полотна й на бічний напрямок у його площині. Нахил віражу φ перекидає частину з однієї в іншу.</li>
+    </ul>
+
+    <h3 style="margin-top:16px">Розміри елементів</h3>
+    <div class="tblwrap">
+      <table class="specs">
+        <tr><th>Елемент</th><th>Розмір</th><th>Звідки</th></tr>
+        <tr><td>Ширина полотна</td><td>1½″ ≈ 3,8 см</td><td>єдина для всієї системи</td></tr>
+        <tr><td>Пряма</td><td>9″ / 12″ / 20″ — 23, 30, 51 см</td><td>серійні довжини</td></tr>
+        <tr><td>Петля</td><td>⌀ 25–30 см</td><td>Track Builder; трюкові — до 70 см</td></tr>
+        <tr><td>Віраж</td><td>90°, нахилений</td><td>окремий елемент, радіус тут регульований</td></tr>
+      </table>
+    </div>
+
+    <p class="warn"><b>Чого тут немає.</b> Машинка їде по осьовій лінії полотна — вона не може зміщуватися впоперек, підійматися бортом чи зрізати поворот по внутрішньому радіусу. Перекидання фіксується за моментом, коли поріг пройдено, але сам перекид не моделюється. Тертя осей стале, хоча насправді залежить від навантаження й вирівнювання коліс. Радіус серійного віражу я не знайшов у джерелах — постав свій, якщо зміряєш. Числа тут — правильні порядки й правильні залежності, а не заміри твоєї конкретної машинки.</p>
+  </div>
+</section>
+
+</div>
+
+<script>
+(function(){
+"use strict";
+var G = 9.81, RHO = 1.2, DEG = Math.PI/180;
+var TRACK_W = 0.038, RAIL_H = 0.006, MU_RAIL = 0.28;
+
+var BODIES = [
+  { id:"muscle", name:"Маслкар", mass:44, cd:0.55, area:5.6, len:0.070, h:0.026, gauge:26, hcg:10.5, wheels:[0.21,0.79], wr:0.0052,
+    poly:[[0,.17],[.03,.30],[.26,.34],[.40,.70],[.62,.74],[.86,.40],[.97,.41],[1,.25],[1,.02],[0,.02]] },
+  { id:"wedge", name:"Клин", mass:38, cd:0.36, area:4.4, len:0.072, h:0.022, gauge:26.5, hcg:8.5, wheels:[0.22,0.80], wr:0.0050,
+    poly:[[0,.06],[.30,.20],[.47,.52],[.70,.58],[.88,.44],[.90,.46],[1,.50],[1,.34],[.94,.32],[1,.03],[0,.02]] },
+  { id:"hotrod", name:"Хот-род", mass:36, cd:0.78, area:5.2, len:0.066, h:0.030, gauge:25, hcg:13, wheels:[0.19,0.82], wr:0.0062,
+    poly:[[0,.14],[.05,.34],[.33,.37],[.39,.84],[.70,.88],[.77,.44],[1,.42],[1,.03],[0,.03]] },
+  { id:"van", name:"Фургон", mass:54, cd:0.86, area:7.8, len:0.068, h:0.034, gauge:25.5, hcg:15, wheels:[0.20,0.80], wr:0.0052,
+    poly:[[0,.13],[.02,.78],[.10,.92],[.90,.94],[1,.80],[1,.04],[0,.03]] },
+  { id:"f1", name:"Формула", mass:32, cd:0.68, area:4.0, len:0.078, h:0.020, gauge:28, hcg:7, wheels:[0.20,0.81], wr:0.0058,
+    poly:[[0,.06],[.15,.07],[.17,.19],[.40,.25],[.47,.46],[.62,.48],[.73,.26],[.84,.26],[.84,.54],[1,.56],[1,.30],[.92,.26],[.92,.03],[0,.03]] }
+];
+
+var TRACKS = [
+  { id:"loop",  name:"Спуск і петля",  sub:"пройде чи вивалиться" },
+  { id:"flat",  name:"Плоский поворот", sub:"90° без нахилу" },
+  { id:"bank",  name:"Віраж 90°",       sub:"той самий поворот, з нахилом" },
+  { id:"ess",   name:"Зв'язка S",       sub:"два віражі підряд" },
+  { id:"hills", name:"Гірки",           sub:"злітає на гребенях" },
+  { id:"jump",  name:"Трамплін",        sub:"дальність польоту" }
+];
+
+var S = {
+  body:"muscle", track:"bank", mass:44, mu:0.030, cd:0.55, area:5.6,
+  gauge:26, hcg:10.5, pod:false, drop:0.60, slope:38, loopD:0.25, crad:0.22, bank:35,
+  inertia:0.04, rate:0.8
+};
+
+/* ================= track construction ================= */
+/* piece: {kh, kv, len, b0, b1, tag, label} — kh = dψ/ds, kv = dθ/ds, b = bank */
+function pieces(){
+  var sl = S.slope*DEG, H = S.drop, P = [];
+  var rampLen = H/Math.sin(sl), R = S.crad, bk = S.bank*DEG, Rl = S.loopD/2;
+
+  function line(len,label){ return {kh:0,kv:0,len:len,b0:0,b1:0,label:label}; }
+  /* an arc of radius `rad` sweeping `sweep` radians: curvature is 1/rad, length is rad*sweep */
+  function arcV(rad,sweep,tag,label){
+    return {kh:0, kv:(sweep>0?1:-1)/rad, len:rad*Math.abs(sweep), b0:0, b1:0, tag:tag, label:label};
+  }
+
+  P.push(line(rampLen, "спуск "+(rampLen*100).toFixed(0)+" см"));
+  P.push(arcV(0.20, sl, null, "перехід"));
+
+  function curve(sweep, bank, name){
+    var sgn = sweep>0?1:-1, ease = 0.10;
+    if(bank>0){
+      P.push({kh:0,kv:0,len:ease,b0:0,b1:sgn*bank,label:"вхід у віраж"});
+      P.push({kh:sgn/R,kv:0,len:R*Math.abs(sweep),b0:sgn*bank,b1:sgn*bank,tag:"curve",label:name});
+      P.push({kh:0,kv:0,len:ease,b0:sgn*bank,b1:0,label:"вихід"});
+    } else {
+      P.push({kh:sgn/R,kv:0,len:R*Math.abs(sweep),b0:0,b1:0,tag:"curve",label:name});
+    }
+  }
+
+  if(S.track==="loop"){
+    P.push(line(0.305,"пряма 30 см"));
+    P.push(arcV(Rl, 2*Math.PI, "loop", "петля ⌀"+(S.loopD*100).toFixed(0)+" см"));
+    P.push(line(0.305,"пряма 30 см"));
+  } else if(S.track==="flat"){
+    P.push(line(0.305,"пряма 30 см"));
+    curve(Math.PI/2, 0, "поворот 90° плоский");
+    P.push(line(0.46,"пряма 46 см"));
+  } else if(S.track==="bank"){
+    P.push(line(0.305,"пряма 30 см"));
+    curve(Math.PI/2, bk, "віраж 90° · "+S.bank+"°");
+    P.push(line(0.46,"пряма 46 см"));
+  } else if(S.track==="ess"){
+    P.push(line(0.23,"пряма 23 см"));
+    curve(Math.PI/2, bk, "віраж 90° вліво");
+    P.push(line(0.23,"пряма 23 см"));
+    curve(-Math.PI/2, bk, "віраж 90° вправо");
+    P.push(line(0.30,"пряма 30 см"));
+  } else if(S.track==="hills"){
+    P.push(line(0.14,"пряма"));
+    P.push(arcV(0.45,  0.70, null,    "підйом"));
+    P.push(arcV(0.45, -1.40, "crest", "гребінь R45"));
+    P.push(arcV(0.45,  0.70, null,    "спад"));
+    P.push(line(0.16,"пряма"));
+    P.push(arcV(0.25,  0.60, null,    "підйом"));
+    P.push(arcV(0.25, -1.20, "crest", "гребінь R25"));
+    P.push(arcV(0.25,  0.60, null,    "спад"));
+    P.push(line(0.40,"пряма 40 см"));
+  } else {
+    P.push(line(0.50,"розгін 50 см"));
+    P.push(arcV(0.30, 0.55, null, "трамплін"));
+    P.push(line(0.07,"зліт"));
+  }
+  return P;
+}
+
+function buildTrack(){
+  var P = pieces(), ds = 0.0035, n = [], s = 0;
+  var x = 0, y = 0, z = S.drop, psi = 0, th = -S.slope*DEG;
+
+  function frame(phi, kh, kv, tag, pi){
+    var ct = Math.cos(th), st = Math.sin(th), cp = Math.cos(psi), sp = Math.sin(psi);
+    var T = [ct*cp, ct*sp, st];
+    var r0 = [-sp, cp, 0];
+    var u0 = [-st*cp, -st*sp, ct];
+    var cb = Math.cos(phi), sb = Math.sin(phi);
+    var nn = [u0[0]*cb + r0[0]*sb, u0[1]*cb + r0[1]*sb, u0[2]*cb + r0[2]*sb];
+    var ll = [r0[0]*cb - u0[0]*sb, r0[1]*cb - u0[1]*sb, r0[2]*cb - u0[2]*sb];
+    return {s:s, p:[x,y,z], T:T, n:nn, l:ll, th:th, phi:phi, pi:pi,
+            kn: kh*ct*sb + kv*cb, kl: kh*ct*cb - kv*sb, tag:tag||null};
+  }
+
+  n.push(frame(P[0].b0, P[0].kh, P[0].kv, P[0].tag, 0));
+  for(var i=0;i<P.length;i++){
+    var g = P[i], steps = Math.max(2, Math.round(g.len/ds)), h = g.len/steps;
+    g.s0 = s; g.z0 = z;
+    for(var j=0;j<steps;j++){
+      var f0 = (j+0.5)/steps;
+      var phiMid = g.b0 + (g.b1-g.b0)*f0;
+      var thM = th + g.kv*h/2, psiM = psi + g.kh*h/2;
+      var ctM = Math.cos(thM);
+      x += h*ctM*Math.cos(psiM); y += h*ctM*Math.sin(psiM); z += h*Math.sin(thM);
+      th += g.kv*h; psi += g.kh*h; s += h;
+      n.push(frame(g.b0 + (g.b1-g.b0)*((j+1)/steps), g.kh, g.kv, g.tag, i));
+    }
+    g.s1 = s; g.z1 = z;
+  }
+  return {nodes:n, total:s, open:S.track==="jump", list:P};
+}
+
+function at(tr,s){
+  var n = tr.nodes;
+  if(s<=0) return n[0];
+  if(s>=tr.total) return n[n.length-1];
+  var lo=0, hi=n.length-1;
+  while(hi-lo>1){ var m=(lo+hi)>>1; if(n[m].s<=s) lo=m; else hi=m; }
+  var a=n[lo], b=n[hi], f=(b.s-a.s)>1e-12 ? (s-a.s)/(b.s-a.s) : 0;
+  function mix(u,w){ return [u[0]+(w[0]-u[0])*f, u[1]+(w[1]-u[1])*f, u[2]+(w[2]-u[2])*f]; }
+  return {s:s, p:mix(a.p,b.p), T:mix(a.T,b.T), n:mix(a.n,b.n), l:mix(a.l,b.l),
+          th:a.th+(b.th-a.th)*f, phi:a.phi, kn:a.kn, kl:a.kl, tag:a.tag, pi:a.pi};
+}
+
+/* ================= physics ================= */
+function simulate(){
+  var tr = buildTrack();
+  var m = S.mass/1000, CdA = S.cd*S.area/10000, meff = m*(1+S.inertia);
+  var kDrag = 0.5*RHO*CdA/meff;
+  var tipLimit = (S.gauge/1000)/(2*S.hcg/1000);
+  var dt = 0.0005, s = 0, v = 0, t = 0;
+  var path=[], series=[], eAxle=0, eRail=0, eDrag=0, vmax=0, gmax=0, lmax=0, lmaxAt=0, rmax=0;
+  var PS = [];
+  var out = {track:tr, path:path, series:series, flight:null, detach:null, tipOver:null, pieceStat:PS,
+             stalled:false, tipLimit:tipLimit, minLoopV:null, minLoopNeed:null};
+
+  for(var guard=0; guard<220000; guard++){
+    var f = at(tr,s);
+    var ct = Math.cos(f.th), cb = Math.cos(f.phi), sb = Math.sin(f.phi);
+    var aN = f.kn*v*v + G*ct*cb;
+    var aL = f.kl*v*v - G*ct*sb;
+    var gl = aN/G, ll = Math.abs(aL)/G;
+    if(gl>gmax) gmax=gl;
+    if(ll>lmax){ lmax=ll; lmaxAt=s; }
+    if(aN > 0.5){ var rr=Math.abs(aL)/aN; if(rr>rmax) rmax=rr; }
+    if(f.tag==="loop" && (out.minLoopV===null || v<out.minLoopV)){
+      out.minLoopV = v;
+      out.minLoopNeed = Math.cos(f.th)<0 ? Math.sqrt(-G*Math.cos(f.th)*(S.loopD/2)) : 0;
+    }
+    path.push(f);
+    series.push({s:s, v:v, g:gl, l:ll, t:t});
+    if(v>vmax) vmax=v;
+
+    if(aN < 0){
+      out.detach = {f:f, s:s, v:v, t:t, tag:f.tag,
+                    need: f.kn ? Math.sqrt(Math.abs(G*ct*cb/f.kn)) : 0};
+      break;
+    }
+    if(Math.abs(aL)/Math.max(aN,1e-6) > tipLimit && v > 0.15){
+      out.tipOver = {f:f, s:s, v:v, t:t, ratio:Math.abs(aL)/aN, lat:ll};
+      break;
+    }
+    if(s >= tr.total) break;
+
+    var acc = (-m*G*Math.sin(f.th) - S.mu*m*aN - MU_RAIL*m*Math.abs(aL) - 0.5*RHO*CdA*v*v)/meff;
+    var vn = v + acc*dt;
+    if(vn <= 0.004 && acc <= 0){ out.stalled = true; v = 0; break; }
+    var ds = Math.max(0, v*dt);
+    var dA = S.mu*m*aN*ds, dR = MU_RAIL*m*Math.abs(aL)*ds, dD = 0.5*RHO*CdA*v*v*ds;
+    eAxle += dA; eRail += dR; eDrag += dD;
+    var pk = f.pi|0;
+    if(!PS[pk]) PS[pk] = {vIn:v, vOut:v, loss:0, gMax:0, lMax:0};
+    PS[pk].vOut = v; PS[pk].loss += dA+dR+dD;
+    if(gl>PS[pk].gMax) PS[pk].gMax = gl;
+    if(ll>PS[pk].lMax) PS[pk].lMax = ll;
+    v = vn; s += ds; t += dt;
+  }
+
+  var launch = null;
+  if(out.detach) launch = {p:out.detach.f.p, T:out.detach.f.T, v:out.detach.v, t:out.detach.t};
+  else if(tr.open && !out.stalled && !out.tipOver && v>0.05){
+    var e = at(tr,tr.total); launch = {p:e.p, T:e.T, v:v, t:t};
+  }
+
+  if(launch){
+    var px=launch.p[0], py=launch.p[1], pz=launch.p[2];
+    var vx=launch.v*launch.T[0], vy=launch.v*launch.T[1], vz=launch.v*launch.T[2];
+    var ft=launch.t, fl=[[px,py,pz]], apex=pz, land=null, d0=[px,py,pz];
+    for(var i=0;i<9000;i++){
+      var sp=Math.sqrt(vx*vx+vy*vy+vz*vz);
+      var nvx=vx-kDrag*sp*vx*dt, nvy=vy-kDrag*sp*vy*dt, nvz=vz+(-G-kDrag*sp*vz)*dt;
+      var nx=px+nvx*dt, ny=py+nvy*dt, nz=pz+nvz*dt;
+      eDrag += 0.5*RHO*CdA*sp*sp*(sp*dt);
+      if(nz<=0 && nvz<0){
+        var fr = pz/Math.max(1e-9, pz-nz);
+        land=[px+(nx-px)*fr, py+(ny-py)*fr, 0]; fl.push(land);
+        px=land[0]; py=land[1]; pz=0; vx=nvx; vy=nvy; vz=nvz; ft+=dt*fr; break;
+      }
+      px=nx; py=ny; pz=nz; vx=nvx; vy=nvy; vz=nvz; ft+=dt;
+      if(pz>apex) apex=pz;
+      fl.push([px,py,pz]);
+      if(ft-launch.t>2.2) break;
+    }
+    out.flight = {pts:fl, land:land, rise:apex-launch.p[2],
+      dist: land ? Math.sqrt(Math.pow(land[0]-d0[0],2)+Math.pow(land[1]-d0[1],2)) : null,
+      tEnd:ft, vLaunch:launch.v, tLaunch:launch.t};
+    t = ft; v = Math.sqrt(vx*vx+vy*vy+vz*vz);
+    out.endZ = land ? 0 : pz;
+  } else {
+    out.endZ = at(tr, Math.min(s,tr.total)).p[2];
+  }
+
+  var eIn = m*G*(tr.nodes[0].p[2] - out.endZ);
+  out.vmax=vmax; out.vend=v; out.time=t; out.gmax=gmax; out.lmax=lmax; out.lmaxAt=lmaxAt; out.rmax=rmax;
+  out.energy={in:eIn, axle:eAxle, rail:eRail, drag:eDrag, kin:0.5*meff*v*v};
+  out.sEnd=s;
+  return out;
+}
+
+/* ================= 3D view ================= */
+var CAM = {az:-2.35, el:0.42, dist:2, tx:0, ty:0, tz:0, fov:0.72};
+var RUN = null, anim = {i:0, on:false, raf:0, last:0};
+var HILITE = -1, PINNED = false;
+function css(v){ return getComputedStyle(document.documentElement).getPropertyValue(v).trim(); }
+function fit(cv){
+  var r=cv.getBoundingClientRect(), d=Math.min(window.devicePixelRatio||1,2);
+  cv.width=Math.max(1,Math.round(r.width*d)); cv.height=Math.max(1,Math.round(r.height*d));
+  var c=cv.getContext("2d"); c.setTransform(d,0,0,d,0,0);
+  return {ctx:c,w:r.width,h:r.height};
+}
+function hex2rgb(h){
+  h=h.replace("#","");
+  if(h.length===3) h=h[0]+h[0]+h[1]+h[1]+h[2]+h[2];
+  return [parseInt(h.slice(0,2),16), parseInt(h.slice(2,4),16), parseInt(h.slice(4,6),16)];
+}
+function shade(rgb, f){
+  return "rgb("+Math.round(Math.min(255,rgb[0]*f))+","+Math.round(Math.min(255,rgb[1]*f))+","+Math.round(Math.min(255,rgb[2]*f))+")";
+}
+function norm(a){ var L=Math.hypot(a[0],a[1],a[2])||1; return [a[0]/L,a[1]/L,a[2]/L]; }
+function cross(a,b){ return [a[1]*b[2]-a[2]*b[1], a[2]*b[0]-a[0]*b[2], a[0]*b[1]-a[1]*b[0]]; }
+function dot(a,b){ return a[0]*b[0]+a[1]*b[1]+a[2]*b[2]; }
+function add(a,b,k){ return [a[0]+b[0]*k, a[1]+b[1]*k, a[2]+b[2]*k]; }
+
+function makeCam(W,H){
+  var cp = [CAM.tx + CAM.dist*Math.cos(CAM.el)*Math.cos(CAM.az),
+            CAM.ty + CAM.dist*Math.cos(CAM.el)*Math.sin(CAM.az),
+            CAM.tz + CAM.dist*Math.sin(CAM.el)];
+  var fwd = norm([CAM.tx-cp[0], CAM.ty-cp[1], CAM.tz-cp[2]]);
+  var rgt = norm(cross(fwd,[0,0,1]));
+  var up  = cross(rgt,fwd);
+  return {cp:cp, fwd:fwd, rgt:rgt, up:up, f:(H/2)/Math.tan(CAM.fov/2), W:W, H:H};
+}
+function proj(p, K){
+  var d=[p[0]-K.cp[0], p[1]-K.cp[1], p[2]-K.cp[2]];
+  var cz=dot(d,K.fwd);
+  if(cz<0.03) return null;
+  return [K.W/2 + K.f*dot(d,K.rgt)/cz, K.H/2 - K.f*dot(d,K.up)/cz, cz];
+}
+function autoFit(){
+  if(!RUN) return;
+  var n=RUN.track.nodes, mn=[1e9,1e9,1e9], mx=[-1e9,-1e9,-1e9];
+  function ext(p){ for(var k=0;k<3;k++){ if(p[k]<mn[k])mn[k]=p[k]; if(p[k]>mx[k])mx[k]=p[k]; } }
+  for(var i=0;i<n.length;i+=4) ext(n[i].p);
+  ext(n[n.length-1].p);
+  if(RUN.flight) for(var j=0;j<RUN.flight.pts.length;j+=6) ext(RUN.flight.pts[j]);
+  ext([mn[0],mn[1],0]);
+  CAM.tx=(mn[0]+mx[0])/2; CAM.ty=(mn[1]+mx[1])/2; CAM.tz=(mn[2]+mx[2])/2;
+  var rad=0.5*Math.hypot(mx[0]-mn[0], mx[1]-mn[1], mx[2]-mn[2]);
+  CAM.dist = Math.max(0.5, rad/Math.sin(CAM.fov/2)*0.95);
+}
+
+function trackBounds(){
+  if(RUN._b) return RUN._b;
+  var n=RUN.track.nodes, mn=[1e9,1e9,1e9], mx=[-1e9,-1e9,-1e9];
+  function ext(p){ for(var k=0;k<3;k++){ if(p[k]<mn[k])mn[k]=p[k]; if(p[k]>mx[k])mx[k]=p[k]; } }
+  for(var i=0;i<n.length;i+=3) ext(n[i].p);
+  ext(n[n.length-1].p);
+  if(RUN.flight) for(var j=0;j<RUN.flight.pts.length;j+=4) ext(RUN.flight.pts[j]);
+  mn[2]=Math.min(mn[2],0);
+  RUN._b={mn:mn,mx:mx};
+  return RUN._b;
+}
+function chip(c,x,y,txt,col){
+  c.font="11px 'IBM Plex Mono', ui-monospace, monospace";
+  c.textAlign="left"; c.textBaseline="middle";
+  var w=c.measureText(txt).width;
+  c.globalAlpha=.9; c.fillStyle=css("--surface");
+  if(c.roundRect){ c.beginPath(); c.roundRect(x-4,y-9,w+8,18,4); c.fill(); }
+  else c.fillRect(x-4,y-9,w+8,18);
+  c.globalAlpha=1; c.fillStyle=col||css("--ink-2"); c.fillText(txt,x,y);
+}
+function dropLine(c,K,p,col){
+  var a=proj(p,K), b=proj([p[0],p[1],0],K);
+  if(!a||!b) return;
+  c.setLineDash([3,4]); c.strokeStyle=col; c.lineWidth=1.2; c.globalAlpha=.75;
+  c.beginPath(); c.moveTo(a[0],a[1]); c.lineTo(b[0],b[1]); c.stroke();
+  c.setLineDash([]); c.globalAlpha=1;
+}
+
+function drawStage(){
+  if(!RUN) return;
+  var cv=document.getElementById("stage"), F=fit(cv), c=F.ctx, W=F.w, H=F.h;
+  var K=makeCam(W,H);
+  c.fillStyle=css("--sky"); c.fillRect(0,0,W,H);
+  c.lineCap="round"; c.lineJoin="round";
+
+  var n=RUN.track.nodes, stride=Math.max(1, Math.round(n.length/220));
+  var bd=trackBounds(), GS=0.25;
+  var gx0=Math.floor((bd.mn[0]-0.45)/GS)*GS, gx1=Math.ceil((bd.mx[0]+0.45)/GS)*GS;
+  var gy0=Math.floor((bd.mn[1]-0.45)/GS)*GS, gy1=Math.ceil((bd.mx[1]+0.45)/GS)*GS;
+
+  /* --- where the car is right now (needed before we cast its shadow) --- */
+  var ai=Math.floor(anim.i), inAir=false, cf=null;
+  if(RUN.flight && ai>=RUN.path.length){
+    var fi=Math.max(0,Math.min(ai-RUN.path.length, RUN.flight.pts.length-2));
+    var p0=RUN.flight.pts[fi], p1=RUN.flight.pts[fi+1];
+    var Tv=norm([p1[0]-p0[0],p1[1]-p0[1],p1[2]-p0[2]]);
+    var rv=norm(cross(Tv,[0,0,1]));
+    cf={p:p0, T:Tv, l:rv, n:norm(cross(rv,Tv))}; inAir=true;
+  } else {
+    cf=RUN.path[Math.max(0,Math.min(ai,RUN.path.length-1))];
+  }
+
+  /* --- ground plane --- */
+  var cor=[[gx0,gy0,0],[gx1,gy0,0],[gx1,gy1,0],[gx0,gy1,0]], gp=[], ok=true;
+  for(var ci=0;ci<4;ci++){ var q0=proj(cor[ci],K); if(!q0){ ok=false; break; } gp.push(q0); }
+  if(ok){
+    c.beginPath(); c.moveTo(gp[0][0],gp[0][1]);
+    for(var si=1;si<4;si++) c.lineTo(gp[si][0],gp[si][1]);
+    c.closePath(); c.fillStyle=css("--ground"); c.fill();
+  }
+  c.strokeStyle=css("--line"); c.lineWidth=1;
+  for(var gi=gx0; gi<=gx1+1e-9; gi+=GS){
+    var a1=proj([gi,gy0,0],K), a2=proj([gi,gy1,0],K);
+    if(a1&&a2){ c.beginPath(); c.moveTo(a1[0],a1[1]); c.lineTo(a2[0],a2[1]); c.stroke(); }
+  }
+  for(var gj=gy0; gj<=gy1+1e-9; gj+=GS){
+    var b1=proj([gx0,gj,0],K), b2=proj([gx1,gj,0],K);
+    if(b1&&b2){ c.beginPath(); c.moveTo(b1[0],b1[1]); c.lineTo(b2[0],b2[1]); c.stroke(); }
+  }
+
+  /* --- the track's shadow on the ground: the strongest depth cue here --- */
+  c.strokeStyle=css("--shade"); c.lineWidth=6;
+  c.beginPath(); var open=false;
+  for(var i0=0;i0<n.length;i0+=stride){
+    var sq=proj([n[i0].p[0],n[i0].p[1],0],K);
+    if(!sq){ open=false; continue; }
+    if(!open){ c.moveTo(sq[0],sq[1]); open=true; } else c.lineTo(sq[0],sq[1]);
+  }
+  c.stroke();
+  if(RUN.flight){
+    c.setLineDash([5,5]); c.lineWidth=3; c.beginPath(); open=false;
+    for(var fj=0;fj<RUN.flight.pts.length;fj+=4){
+      var fq=proj([RUN.flight.pts[fj][0],RUN.flight.pts[fj][1],0],K);
+      if(!fq){ open=false; continue; }
+      if(!open){ c.moveTo(fq[0],fq[1]); open=true; } else c.lineTo(fq[0],fq[1]);
+    }
+    c.stroke(); c.setLineDash([]);
+  }
+  /* car shadow */
+  var csh=proj([cf.p[0],cf.p[1],0],K), cshR=proj([cf.p[0]+body().len*0.5, cf.p[1], 0],K);
+  if(csh&&cshR){
+    var rr=Math.max(3, Math.hypot(cshR[0]-csh[0], cshR[1]-csh[1]));
+    c.fillStyle=css("--shade"); c.beginPath();
+    c.ellipse(csh[0], csh[1], rr, rr*0.45, 0, 0, 6.2832); c.fill();
+  }
+
+  /* --- height ruler at the start --- */
+  var n0=n[0].p, H0=n0[2], rulerTop=null, rulerBase=null;
+  rulerBase=proj([n0[0],n0[1],0],K); rulerTop=proj([n0[0],n0[1],H0],K);
+  if(rulerBase&&rulerTop&&H0>0.02){
+    c.strokeStyle=css("--muted"); c.lineWidth=1.4;
+    c.beginPath(); c.moveTo(rulerBase[0],rulerBase[1]); c.lineTo(rulerTop[0],rulerTop[1]); c.stroke();
+    for(var hh=0; hh<=H0+1e-6; hh+=0.10){
+      var tk=proj([n0[0],n0[1],hh],K); if(!tk) continue;
+      var major=Math.abs(hh/0.5 - Math.round(hh/0.5))<1e-6;
+      c.lineWidth=major?1.6:1;
+      c.beginPath(); c.moveTo(tk[0]-(major?8:4),tk[1]); c.lineTo(tk[0]+(major?8:4),tk[1]); c.stroke();
+    }
+  }
+  dropLine(c,K,cf.p, inAir?css("--track"):css("--muted"));
+  if(RUN.detach) dropLine(c,K,RUN.detach.f.p, css("--bad"));
+  if(RUN.tipOver) dropLine(c,K,RUN.tipOver.f.p, css("--bad"));
+
+  /* --- the track itself, painter-sorted --- */
+  var faces=[];
+  var orange=hex2rgb(css("--track")), dark=hex2rgb(css("--track-dark"));
+  var L=norm([0.35,-0.55,0.75]), hw=TRACK_W/2;
+  function push(pts, rgb, lit, bias){
+    var s2=[], zs=0;
+    for(var i=0;i<pts.length;i++){ var q=proj(pts[i],K); if(!q) return; s2.push(q); zs+=q[2]; }
+    faces.push({sp:s2, col:shade(rgb,lit), z:zs/pts.length + (bias||0)});
+  }
+  for(var i=0;i+stride<n.length;i+=stride){
+    var a=n[i], b2=n[i+stride];
+    var aL=add(a.p,a.l,hw), aR=add(a.p,a.l,-hw), bL=add(b2.p,b2.l,hw), bR=add(b2.p,b2.l,-hw);
+    push([aL,aR,bR,bL], orange, 0.62+0.48*Math.max(0,dot(a.n,L)));
+    push([aL, add(aL,a.n,RAIL_H), add(bL,b2.n,RAIL_H), bL], dark, 0.85+0.3*Math.max(0,dot(a.l,L)), -0.001);
+    push([aR, add(aR,a.n,RAIL_H), add(bR,b2.n,RAIL_H), bR], dark, 0.85+0.3*Math.max(0,-dot(a.l,L)), -0.001);
+  }
+  addCar(faces, cf, K, L, inAir);
+  faces.sort(function(u,w){ return w.z-u.z; });
+  for(var k2=0;k2<faces.length;k2++){
+    var fc=faces[k2];
+    c.beginPath(); c.moveTo(fc.sp[0][0],fc.sp[0][1]);
+    for(var j2=1;j2<fc.sp.length;j2++) c.lineTo(fc.sp[j2][0],fc.sp[j2][1]);
+    c.closePath(); c.fillStyle=fc.col; c.fill();
+  }
+
+  /* --- the hovered piece, traced over the ribbon --- */
+  if(HILITE>=0){
+    var hA=null, hB=null;
+    c.strokeStyle=css("--ink"); c.lineWidth=2.2; c.globalAlpha=.95;
+    [1,-1].forEach(function(sg){
+      c.beginPath(); var hop=false;
+      for(var hi=0;hi<n.length;hi++){
+        var nd=n[hi];
+        if(nd.pi!==HILITE){ hop=false; continue; }
+        var hq=proj(add(nd.p, nd.l, sg*hw), K);
+        if(!hq){ hop=false; continue; }
+        if(sg===1){ if(!hA) hA=nd.p; hB=nd.p; }
+        if(!hop){ c.moveTo(hq[0],hq[1]); hop=true; } else c.lineTo(hq[0],hq[1]);
+      }
+      c.stroke();
+    });
+    c.globalAlpha=1;
+    var g2=RUN.track.list[HILITE];
+    if(hA){ var qa=proj(hA,K); if(qa&&g2) chip(c, qa[0]+9, qa[1]+13, cm(g2.s0)+" см", css("--ink")); }
+    if(hB){ var qb=proj(hB,K); if(qb&&g2) chip(c, qb[0]+9, qb[1]-13, cm(g2.s1)+" см", css("--ink")); }
+  }
+
+  /* --- flight arc and markers --- */
+  var apexP=null;
+  if(RUN.flight){
+    var arc=[], apex=-1e9;
+    for(var m0=0;m0<RUN.flight.pts.length;m0+=3){
+      var pp=RUN.flight.pts[m0], aq=proj(pp,K);
+      if(aq) arc.push(aq);
+      if(pp[2]>apex){ apex=pp[2]; apexP=pp; }
+    }
+    if(arc.length>1){
+      c.setLineDash([5,4]); c.strokeStyle=css("--muted"); c.lineWidth=1.8;
+      c.beginPath(); c.moveTo(arc[0][0],arc[0][1]);
+      for(var m1=1;m1<arc.length;m1++) c.lineTo(arc[m1][0],arc[m1][1]);
+      c.stroke(); c.setLineDash([]);
+    }
+    if(RUN.flight.land){ var lp=proj(RUN.flight.land,K); if(lp) mark(c,lp,css("--track")); }
+  }
+  if(RUN.detach){ var dp=proj(RUN.detach.f.p,K); if(dp) mark(c,dp,css("--bad")); }
+  if(RUN.tipOver){ var tp=proj(RUN.tipOver.f.p,K); if(tp) mark(c,tp,css("--bad")); }
+
+  /* --- labels last, so nothing paints over them --- */
+  if(rulerTop&&rulerBase&&H0>0.02){
+    chip(c, rulerTop[0]+11, rulerTop[1], "старт · "+(H0*100).toFixed(0)+" см", css("--ink"));
+    chip(c, rulerBase[0]+11, rulerBase[1], "земля 0", css("--muted"));
+  }
+  if(apexP && apexP[2]>0.03){
+    var apq=proj(apexP,K);
+    if(apq) chip(c, apq[0]+10, apq[1]-12, "політ · "+(apexP[2]*100).toFixed(0)+" см", css("--track-dark"));
+  }
+  var cq=proj(cf.p,K);
+  if(cq && cf.p[2]>0.02) chip(c, cq[0]+12, cq[1]-14, (cf.p[2]*100).toFixed(0)+" см", css("--ink-2"));
+  c.font="11px 'IBM Plex Mono', ui-monospace, monospace";
+  c.fillStyle=css("--muted"); c.textAlign="left"; c.textBaseline="bottom";
+  c.fillText("клітинка 25 см", 12, H-10);
+}
+function mark(c,p,col){
+  c.strokeStyle=col; c.lineWidth=2;
+  c.beginPath(); c.moveTo(p[0]-6,p[1]-6); c.lineTo(p[0]+6,p[1]+6);
+  c.moveTo(p[0]+6,p[1]-6); c.lineTo(p[0]-6,p[1]+6); c.stroke();
+}
+function body(){ for(var i=0;i<BODIES.length;i++) if(BODIES[i].id===S.body) return BODIES[i]; return BODIES[0]; }
+
+function addCar(faces, f, K, L, inAir){
+  var B=body(), len=B.len, ht=B.h, wid=Math.min(0.030, S.gauge/1000), wr=B.wr;
+  var base=add(f.p, f.n, wr);
+  function W(lx,ly,lz){
+    return [base[0]+f.T[0]*lx+f.l[0]*ly+f.n[0]*lz,
+            base[1]+f.T[1]*lx+f.l[1]*ly+f.n[1]*lz,
+            base[2]+f.T[2]*lx+f.l[2]*ly+f.n[2]*lz];
+  }
+  var ink=hex2rgb(css("--ink-2")), bodyCol=hex2rgb(css("--c-speed"));
+  bodyCol=[ (ink[0]*0.45+bodyCol[0]*0.55), (ink[1]*0.45+bodyCol[1]*0.55), (ink[2]*0.45+bodyCol[2]*0.55) ];
+  var hw=wid/2, pts=B.poly;
+
+  function face(list, rgb, nrm, bias){
+    var sp=[], zs=0;
+    for(var i=0;i<list.length;i++){ var q=proj(list[i],K); if(!q) return; sp.push(q); zs+=q[2]; }
+    var lit=0.6+0.5*Math.max(0,dot(nrm,L));
+    faces.push({sp:sp, col:shade(rgb,lit), z:zs/list.length - 0.004 + (bias||0)});
+  }
+  // two flanks
+  var left=[], right=[];
+  for(var i=0;i<pts.length;i++){
+    var lx=(pts[i][0]-0.5)*len, lz=wr*0.55 + pts[i][1]*ht;
+    left.push(W(lx, hw, lz)); right.push(W(lx,-hw, lz));
+  }
+  face(left, bodyCol, f.l, 0);
+  face(right, bodyCol, [-f.l[0],-f.l[1],-f.l[2]], 0);
+  for(var j=0;j<pts.length;j++){
+    var k=(j+1)%pts.length;
+    var e=[left[j],left[k],right[k],right[j]];
+    var ex=[pts[k][0]-pts[j][0], pts[k][1]-pts[j][1]];
+    var nl=Math.hypot(ex[0],ex[1])||1;
+    var nrm=[ f.T[0]*(ex[1]/nl) + f.n[0]*(-ex[0]/nl),
+              f.T[1]*(ex[1]/nl) + f.n[1]*(-ex[0]/nl),
+              f.T[2]*(ex[1]/nl) + f.n[2]*(-ex[0]/nl) ];
+    face(e, bodyCol, nrm, 0);
+  }
+  // wheels
+  for(var w=0;w<B.wheels.length;w++){
+    for(var sgn=-1; sgn<=1; sgn+=2){
+      var cxl=(B.wheels[w]-0.5)*len, ring=[];
+      for(var a=0;a<10;a++){
+        var t=a/10*Math.PI*2;
+        ring.push(W(cxl+Math.cos(t)*wr, sgn*(hw+0.0012), wr*0 + Math.sin(t)*wr));
+      }
+      face(ring, ink, [f.l[0]*sgn,f.l[1]*sgn,f.l[2]*sgn], -0.002);
+    }
+  }
+  if(S.pod){
+    var pod=[], podCol=hex2rgb(css("--c-load"));
+    for(var a2=0;a2<8;a2++){
+      var t2=a2/8*Math.PI*2;
+      pod.push(W(-len*0.05+Math.cos(t2)*len*0.14, hw*0.9, wr*0.55+ht*0.95+Math.sin(t2)*ht*0.3));
+    }
+    face(pod, podCol, f.l, -0.003);
+  }
+}
+
+/* stage interaction */
+(function(){
+  var cv=document.getElementById("stage"), drag=null;
+  cv.addEventListener("pointerdown", function(e){
+    drag={x:e.clientX, y:e.clientY}; cv.setPointerCapture(e.pointerId);
+  });
+  cv.addEventListener("pointermove", function(e){
+    if(!drag) return;
+    CAM.az -= (e.clientX-drag.x)*0.008;
+    CAM.el = Math.max(-0.2, Math.min(1.45, CAM.el + (e.clientY-drag.y)*0.006));
+    drag={x:e.clientX, y:e.clientY};
+    drawStage();
+  });
+  cv.addEventListener("pointerup", function(){ drag=null; });
+  cv.addEventListener("wheel", function(e){
+    e.preventDefault();
+    var k = e.deltaY>0 ? 1.12 : 0.893;
+    CAM.dist = Math.max(0.22, Math.min(25, CAM.dist*k));
+    drawStage();
+  }, {passive:false});
+  cv.addEventListener("pointercancel", function(){ drag=null; });
+  document.getElementById("viewReset").addEventListener("click", function(){
+    CAM.az=-2.35; CAM.el=0.42; autoFit(); drawStage();
+  });
+})();
+
+/* ================= charts ================= */
+var CHARTS={};
+function f1(v){ return v.toFixed(1).replace(".",","); }
+function drawChart(id){
+  var cfg=CHARTS[id]; if(!cfg||!RUN) return;
+  var data=RUN.series, cv=document.getElementById(id), F=fit(cv), c=F.ctx, W=F.w, H=F.h;
+  var mL=34,mR=12,mT=10,mB=20, pw=W-mL-mR, ph=H-mT-mB;
+  var tip=document.getElementById(cfg.tipId);
+  c.clearRect(0,0,W,H);
+  if(!data.length||pw<=0){ tip.classList.remove("on"); return; }
+
+  var xs=data[data.length-1].s||1, lo=0, hi=-Infinity;
+  cfg.keys.forEach(function(k){
+    for(var i=0;i<data.length;i++){ var v=data[i][k.key]; if(v<lo)lo=v; if(v>hi)hi=v; }
+  });
+  if(cfg.zero){ lo=Math.min(lo,-0.4); hi=Math.max(hi,1.2); }
+  if(hi-lo<1e-6) hi=lo+1;
+  var pd=(hi-lo)*0.1; hi+=pd; if(cfg.zero) lo-=pd;
+  function X(s){ return mL + s/xs*pw; }
+  function Y(v){ return mT + (1-(v-lo)/(hi-lo))*ph; }
+  var step=Math.max(1, Math.floor(data.length/420));
+
+  c.font="10px 'IBM Plex Mono', ui-monospace, monospace";
+  c.strokeStyle=css("--line-soft"); c.lineWidth=1; c.fillStyle=css("--muted");
+  c.textBaseline="middle"; c.textAlign="right";
+  for(var t=0;t<=3;t++){
+    var vv=lo+(hi-lo)*t/3, yy=Math.round(Y(vv))+0.5;
+    c.beginPath(); c.moveTo(mL,yy); c.lineTo(W-mR,yy); c.stroke();
+    c.fillText(f1(vv), mL-5, yy);
+  }
+  c.textBaseline="top"; c.textAlign="center";
+  for(var q=0;q<=2;q++){ var sv=xs*q/2; c.fillText(sv.toFixed(1).replace(".",","), X(sv), H-mB+5); }
+  c.textAlign="right"; c.fillText("м", W-mR, H-mB+5);
+
+  if(cfg.zero){
+    c.strokeStyle=css("--bad"); c.setLineDash([3,3]);
+    c.beginPath(); c.moveTo(mL,Y(0)); c.lineTo(W-mR,Y(0)); c.stroke(); c.setLineDash([]);
+  }
+  cfg.keys.forEach(function(k){
+    var col=css(k.color);
+    c.strokeStyle=col; c.lineWidth=2; c.lineJoin="round"; c.lineCap="round";
+    c.beginPath();
+    for(var i=0;i<data.length;i+=step){ var d=data[i]; if(i===0) c.moveTo(X(d.s),Y(d[k.key])); else c.lineTo(X(d.s),Y(d[k.key])); }
+    var last=data[data.length-1];
+    c.lineTo(X(last.s),Y(last[k.key])); c.stroke();
+    c.fillStyle=col; c.beginPath(); c.arc(X(last.s),Y(last[k.key]),3.2,0,6.2832); c.fill();
+  });
+
+  cfg.geom={mL:mL,mR:mR,pw:pw,xs:xs,step:step};
+  if(cfg.hover>=0 && cfg.hover<data.length){
+    var d2=data[cfg.hover], parts=[];
+    c.strokeStyle=css("--muted"); c.setLineDash([2,3]); c.lineWidth=1;
+    c.beginPath(); c.moveTo(X(d2.s),mT); c.lineTo(X(d2.s),H-mB); c.stroke(); c.setLineDash([]);
+    cfg.keys.forEach(function(k){
+      c.beginPath(); c.arc(X(d2.s),Y(d2[k.key]),4,0,6.2832);
+      c.fillStyle=css(k.color); c.fill();
+      c.strokeStyle=css("--surface"); c.lineWidth=2; c.stroke();
+      parts.push(k.label+" "+f1(d2[k.key]));
+    });
+    tip.style.left=X(d2.s)+"px";
+    tip.style.top=Y(d2[cfg.keys[0].key])+"px";
+    tip.textContent=parts.join(" · ")+" "+cfg.unit+" · "+d2.s.toFixed(2).replace(".",",")+" м";
+    tip.classList.add("on");
+  } else tip.classList.remove("on");
+}
+function setupChart(id,tipId,keys,unit,zero){
+  CHARTS[id]={tipId:tipId, keys:keys, unit:unit, zero:zero, hover:-1, geom:null};
+  var cv=document.getElementById(id);
+  cv.addEventListener("pointermove", function(e){
+    var cfg=CHARTS[id]; if(!cfg.geom||!RUN) return;
+    var g=cfg.geom, r=cv.getBoundingClientRect(), mx=e.clientX-r.left;
+    if(mx<g.mL||mx>r.width-g.mR){ if(cfg.hover!==-1){cfg.hover=-1; drawChart(id);} return; }
+    var sv=(mx-g.mL)/g.pw*g.xs, d=RUN.series, idx=0, best=1e9;
+    for(var k=0;k<d.length;k+=g.step){ var dd=Math.abs(d[k].s-sv); if(dd<best){best=dd; idx=k;} }
+    if(idx!==cfg.hover){ cfg.hover=idx; drawChart(id); }
+  });
+  cv.addEventListener("pointerleave", function(){
+    var cfg=CHARTS[id]; if(cfg.hover!==-1){ cfg.hover=-1; drawChart(id); }
+  });
+}
+
+/* ================= energy ================= */
+function drawEnergy(){
+  var e=RUN.energy, bar=document.getElementById("ebar"), leg=document.getElementById("elegend");
+  var tot=Math.max(1e-9, e.axle+e.rail+e.drag+Math.max(0,e.kin));
+  var parts=[
+    {n:"Тертя осей", v:e.axle, c:css("--c-fric")},
+    {n:"Борт у поворотах", v:e.rail, c:css("--c-load")},
+    {n:"Опір повітря", v:e.drag, c:css("--c-speed")},
+    {n:"Лишилось у русі", v:Math.max(0,e.kin), c:css("--line")}
+  ];
+  bar.innerHTML=""; leg.innerHTML="";
+  parts.forEach(function(p){
+    var pc=p.v/tot*100;
+    var d=document.createElement("div");
+    d.style.cssText="flex:"+Math.max(0.004,pc)+" 0 0; background:"+p.c;
+    bar.appendChild(d);
+    var it=document.createElement("span"); it.className="it";
+    it.innerHTML='<span class="sw" style="background:'+p.c+'"></span><span>'+p.n+
+      ' <span class="n mono">'+pc.toFixed(0)+'%</span> <span style="color:var(--muted)" class="mono">'+
+      (p.v*1000).toFixed(1)+' мДж</span></span>';
+    leg.appendChild(it);
+  });
+  document.getElementById("eTotal").textContent="з висоти взято "+(e.in*1000).toFixed(0)+" мДж";
+}
+
+/* ================= verdict ================= */
+function cm(v){ var r=Math.round(v*100); return r===0 ? 0 : r; }
+function nm(x,p){ return x.toFixed(p===undefined?2:p).replace(".",","); }
+function setVerdict(){
+  var b=document.getElementById("badge"), tx=document.getElementById("verdict");
+  var d=RUN.detach, tip=RUN.tipOver, f=RUN.flight;
+  if(RUN.stalled){
+    b.className="badge bad"; b.textContent="Застрягла";
+    tx.innerHTML="Енергії висоти не вистачило — зупинилася на <b>"+nm(RUN.sEnd)+" м</b>. "+
+      (RUN.energy.rail>RUN.energy.axle ? "Більшу частину з'їв борт у повороті — спробуй нахилити віраж." : "Підніми старт або зменш тертя в осях.");
+  } else if(tip){
+    b.className="badge bad"; b.textContent="Перекинулась";
+    tx.innerHTML="На <b>"+nm(tip.s)+" м</b> бічна сила досягла <b>"+nm(tip.lat)+" g</b> — це <b>"+
+      nm(tip.ratio,2)+"</b> від притиску, більше за поріг <b>"+nm(RUN.tipLimit,2)+"</b>, який дає колія "+
+      nm(S.gauge,0)+" мм при центрі ваги на "+nm(S.hcg,1)+" мм. "+
+      (S.bank<60 && (S.track==="flat"||S.track==="bank"||S.track==="ess")
+        ? "Додай нахил віражу або збільш радіус." : "Знизь центр ваги або зменш швидкість на вході.");
+  } else if(d){
+    var where = d.tag==="loop" ? "у петлі" : (d.tag==="crest" ? "на гребені" : "на вигині");
+    b.className="badge bad"; b.textContent="Відрив";
+    var why = d.tag==="loop"
+      ? "швидкості забракло: <b>"+nm(d.v)+" м/с</b> проти потрібних <b>"+nm(d.need)+" м/с</b>"
+      : "швидкість завелика для такої кривизни: <b>"+nm(d.v)+" м/с</b> проти критичних <b>"+nm(d.need)+" м/с</b>";
+    tx.innerHTML="Полотно перестало притискати машинку "+where+" на <b>"+nm(d.s)+" м</b> — "+why+". "+
+      (f&&f.land ? "Приземлення за <b>"+nm(f.dist*100,0)+" см</b> від точки відриву." : "Далі вільний політ.");
+  } else if(f){
+    b.className="badge fly"; b.textContent="Політ";
+    tx.innerHTML="Зліт на <b>"+nm(f.vLaunch)+" м/с</b>. Дальність <b>"+nm(f.dist*100,0)+
+      " см</b>, підйом <b>"+nm(f.rise*100,0)+" см</b>, у повітрі <b>"+nm(f.tEnd-f.tLaunch)+" с</b>.";
+  } else {
+    b.className="badge ok"; b.textContent="Пройшла";
+    var extra="";
+    if(S.track==="loop" && RUN.minLoopV!==null){
+      extra=" У петлі найповільніша точка — <b>"+nm(RUN.minLoopV)+" м/с</b> при потрібних <b>"+
+        nm(RUN.minLoopNeed)+" м/с</b>.";
+    } else if(RUN.lmax>0.05){
+      var railPc = RUN.energy.rail/Math.max(1e-9,RUN.energy.axle+RUN.energy.rail+RUN.energy.drag)*100;
+      extra=" Пік бічного — <b>"+nm(RUN.lmax)+" g</b>, але притиск у ту мить теж великий, тож відношення "+
+        "вийшло <b>"+nm(RUN.rmax,2)+"</b> проти порогу <b>"+nm(RUN.tipLimit,2)+"</b>. Борт з'їв "+
+        railPc.toFixed(0)+"% усіх втрат.";
+    }
+    tx.innerHTML="Траса пройдена за <b>"+nm(RUN.time)+" с</b>, на фініші <b>"+nm(RUN.vend)+" м/с</b>."+extra;
+  }
+}
+
+/* ================= render ================= */
+function render(refit){
+  RUN=simulate(); HILITE=-1; PINNED=false;
+  if(refit) autoFit();
+  anim.i=totalFrames(); anim.on=false;
+  document.getElementById("play").textContent="▶ Запустити";
+  document.getElementById("clock").textContent=nm(RUN.time,3)+" с";
+
+  drawStage(); setVerdict();
+  CHARTS["cSpeed"].hover=-1; CHARTS["cLoad"].hover=-1;
+  drawChart("cSpeed"); drawChart("cLoad");
+  drawEnergy();
+
+  document.getElementById("tVmax").innerHTML=nm(RUN.vmax)+'<span class="u">м/с</span>';
+  document.getElementById("tTime").innerHTML=nm(RUN.time)+'<span class="u">с</span>';
+  document.getElementById("tGmax").innerHTML=nm(RUN.gmax,1)+'<span class="u">g</span>';
+  var marg=Math.max(0, (1-RUN.rmax/RUN.tipLimit)*100);
+  document.getElementById("tLmax").innerHTML=(RUN.tipOver?"0":marg.toFixed(0))+'<span class="u">%</span>';
+  document.getElementById("tLsub").textContent="бічне/притиск "+nm(RUN.rmax,2)+" · поріг "+nm(RUN.tipLimit,2)+
+    " · пік бічного "+nm(RUN.lmax,1)+" g";
+  document.getElementById("sub1").textContent="пік "+nm(RUN.vmax)+" м/с";
+
+  buildPieceList();
+  syncIO();
+}
+function buildPieceList(){
+  var pl=document.getElementById("pieces"), tot=0;
+  RUN.track.list.forEach(function(p){ tot+=p.len; });
+  PIECE_TOTAL = "<b>Складено з:</b> " +
+    RUN.track.list.map(function(p,i){ return '<span class="pc" data-i="'+i+'">'+p.label+'</span>'; })
+      .join('<i class="sep">·</i>') +
+    ' <i class="sep">→</i> <b>'+(tot*100).toFixed(0)+' см полотна</b>';
+  pl.innerHTML = PIECE_TOTAL + '<span class="pcinfo" id="pcInfo"></span>';
+  showPiece(-1);
+}
+var PIECE_TOTAL = "";
+function showPiece(i){
+  var box=document.getElementById("pcInfo"); if(!box) return;
+  Array.prototype.forEach.call(document.querySelectorAll(".pc"), function(el,k){
+    el.classList.toggle("on", k===i);
+  });
+  if(i<0){
+    var was=HILITE; HILITE=-1;
+    box.innerHTML='<span class="pchint">наведи на елемент — покаже його місце на трасі, перепад висоти й скільки він з\'їдає</span>';
+    if(was>=0) drawStage();
+    return;
+  }
+  HILITE=i;
+  var g=RUN.track.list[i], st=RUN.pieceStat[i];
+  var totLoss=RUN.energy.axle+RUN.energy.rail+RUN.energy.drag;
+  var bits=[
+    "<b>"+g.label+"</b>",
+    (g.len*100).toFixed(0)+" см завдовжки",
+    "від "+cm(g.s0)+" до "+cm(g.s1)+" см траси",
+    "висота "+cm(g.z0)+" → "+cm(g.z1)+" см"
+  ];
+  if(st){
+    bits.push("швидкість "+nm(st.vIn)+" → "+nm(st.vOut)+" м/с");
+    bits.push("з'їдає <b>"+(st.loss*1000).toFixed(1)+" мДж</b>"+
+      (totLoss>1e-9 ? " ("+(st.loss/totLoss*100).toFixed(0)+"% усіх втрат)" : ""));
+    if(st.lMax>0.08) bits.push("бічне до "+nm(st.lMax,1)+" g");
+  } else {
+    bits.push("<span style=\"color:var(--muted)\">машинка сюди не доїхала</span>");
+  }
+  box.innerHTML = bits.join(' <i class="sep">·</i> ');
+  drawStage();
+}
+(function(){
+  var host=document.getElementById("pieces");
+  host.addEventListener("pointerover", function(e){
+    var el=e.target.closest(".pc"); if(!el||PINNED) return;
+    showPiece(+el.dataset.i);
+  });
+  host.addEventListener("pointerout", function(e){
+    if(PINNED) return;
+    var el=e.target.closest(".pc"); if(!el) return;
+    if(e.relatedTarget && e.relatedTarget.closest && e.relatedTarget.closest(".pc")) return;
+    showPiece(-1);
+  });
+  host.addEventListener("click", function(e){
+    var el=e.target.closest(".pc");
+    if(!el){ PINNED=false; showPiece(-1); return; }
+    var i=+el.dataset.i;
+    if(PINNED && HILITE===i){ PINNED=false; showPiece(-1); }
+    else { PINNED=true; showPiece(i); }
+  });
+})();
+
+function totalFrames(){ return RUN.path.length + (RUN.flight?RUN.flight.pts.length:0) - 1; }
+
+function tick(ts){
+  if(!anim.on) return;
+  if(!anim.last) anim.last=ts;
+  var dtms=Math.min(64, ts-anim.last); anim.last=ts;
+  anim.i += (dtms/1000)*S.rate/0.0005;
+  var tf=totalFrames();
+  if(anim.i>=tf){ anim.i=tf; anim.on=false; document.getElementById("play").textContent="▶ Запустити"; }
+  var ti=anim.i<RUN.series.length ? RUN.series[Math.floor(anim.i)].t : RUN.time;
+  document.getElementById("clock").textContent=nm(ti,3)+" с";
+  drawStage();
+  if(anim.on) anim.raf=requestAnimationFrame(tick);
+}
+document.getElementById("play").addEventListener("click", function(){
+  if(anim.on){ anim.on=false; this.textContent="▶ Продовжити"; cancelAnimationFrame(anim.raf); return; }
+  if(anim.i>=totalFrames()) anim.i=0;
+  anim.on=true; anim.last=0; this.textContent="❚❚ Пауза";
+  anim.raf=requestAnimationFrame(tick);
+});
+
+/* ================= controls ================= */
+function buildShapes(){
+  var host=document.getElementById("shapes");
+  BODIES.forEach(function(B){
+    var btn=document.createElement("button");
+    btn.className="shape"; btn.type="button"; btn.setAttribute("aria-pressed", B.id===S.body);
+    var pts=B.poly.map(function(p){ return (p[0]*100).toFixed(1)+","+(46-p[1]*32).toFixed(1); }).join(" ");
+    var wh=B.wheels.map(function(w){ return '<circle cx="'+(w*100).toFixed(1)+'" cy="49" r="7" fill="currentColor" opacity=".45"/>'; }).join("");
+    btn.innerHTML='<svg viewBox="-4 4 108 54" aria-hidden="true" style="color:var(--ink-2)">'+wh+
+      '<polygon points="'+pts+'" fill="currentColor"/></svg><span>'+B.name+'</span>';
+    btn.addEventListener("click", function(){
+      S.body=B.id; S.mass=B.mass; S.cd=B.cd; S.area=B.area; S.gauge=B.gauge; S.hcg=B.hcg;
+      if(S.pod) applyPod();
+      paintShapes(); syncInputs(); render(false);
+    });
+    host.appendChild(btn);
+  });
+}
+function paintShapes(){
+  Array.prototype.forEach.call(document.querySelectorAll(".shape"), function(b,i){
+    b.setAttribute("aria-pressed", BODIES[i].id===S.body);
+  });
+}
+function trackFields(){
+  document.getElementById("fLoop").hidden = S.track!=="loop";
+  document.getElementById("fRad").hidden  = !(S.track==="flat"||S.track==="bank"||S.track==="ess");
+  document.getElementById("fBank").hidden = !(S.track==="bank"||S.track==="ess");
+}
+function buildTracks(){
+  var host=document.getElementById("tracks");
+  TRACKS.forEach(function(T){
+    var btn=document.createElement("button");
+    btn.className="trk"; btn.type="button"; btn.setAttribute("aria-pressed", T.id===S.track);
+    btn.innerHTML=T.name+"<small>"+T.sub+"</small>";
+    btn.addEventListener("click", function(){
+      S.track=T.id;
+      Array.prototype.forEach.call(host.children, function(b,i){ b.setAttribute("aria-pressed", TRACKS[i].id===S.track); });
+      trackFields(); syncInputs(); render(true);
+    });
+    host.appendChild(btn);
+  });
+  trackFields();
+}
+function applyPod(){
+  var B=body();
+  if(S.pod){ S.mass=B.mass+5.4; S.area=B.area+3.0; S.cd=0.90; S.hcg=B.hcg+6; }
+  else { S.mass=B.mass; S.area=B.area; S.cd=B.cd; S.hcg=B.hcg; }
+}
+function syncInputs(){
+  var q=function(id){ return document.getElementById(id); };
+  q("mass").value=S.mass;  q("massV").textContent=S.mass.toFixed(0)+" г";
+  q("mu").value=S.mu;      q("muV").textContent=nm(S.mu,3);
+  q("gauge").value=S.gauge;q("gaugeV").textContent=nm(S.gauge,1)+" мм";
+  q("hcg").value=S.hcg;    q("hcgV").textContent=nm(S.hcg,1)+" мм";
+  q("cd").value=S.cd;      q("cdV").textContent=nm(S.cd,2);
+  q("area").value=S.area;  q("areaV").textContent=nm(S.area,1)+" см²";
+  q("drop").value=S.drop*100;  q("dropV").textContent=(S.drop*100).toFixed(0)+" см";
+  q("slope").value=S.slope;    q("slopeV").textContent=S.slope.toFixed(0)+"°";
+  q("loopd").value=S.loopD*100;q("loopdV").textContent=nm(S.loopD*100,0)+" см";
+  q("crad").value=S.crad*100;  q("cradV").textContent=nm(S.crad*100,0)+" см";
+  q("bank").value=S.bank;      q("bankV").textContent=S.bank.toFixed(0)+"°";
+  q("pod").checked=S.pod;
+  q("tipHint").textContent="Поріг перекидання = колія/(2·h) = "+nm((S.gauge)/(2*S.hcg),2)+" g бічного.";
+  if(RUN && RUN.lmax>0.05){
+    var ideal=Math.atan(RUN.vmax*RUN.vmax/(G*S.crad))/DEG;
+    document.getElementById("bankHint").textContent =
+      "Ідеал для "+nm(RUN.vmax)+" м/с у радіусі "+nm(S.crad*100,0)+" см — близько "+ideal.toFixed(0)+"°.";
+  } else {
+    document.getElementById("bankHint").textContent="tan φ = v²/(gR) прибирає бічну силу повністю.";
+  }
+}
+function bindRange(id, apply, refit){
+  document.getElementById(id).addEventListener("input", function(){
+    apply(parseFloat(this.value)); syncInputs(); render(!!refit);
+  });
+}
+bindRange("mass", function(v){S.mass=v;});
+bindRange("mu",   function(v){S.mu=v;});
+bindRange("gauge",function(v){S.gauge=v;});
+bindRange("hcg",  function(v){S.hcg=v;});
+bindRange("cd",   function(v){S.cd=v;});
+bindRange("area", function(v){S.area=v;});
+bindRange("drop", function(v){S.drop=v/100;}, true);
+bindRange("slope",function(v){S.slope=v;}, true);
+bindRange("loopd",function(v){S.loopD=v/100;}, true);
+bindRange("crad", function(v){S.crad=v/100;}, true);
+bindRange("bank", function(v){S.bank=v;});
+document.getElementById("pod").addEventListener("change", function(){
+  S.pod=this.checked; applyPod(); syncInputs(); render(false);
+});
+Array.prototype.forEach.call(document.querySelectorAll(".seg button"), function(b){
+  b.addEventListener("click", function(){
+    S.rate=parseFloat(b.dataset.rate);
+    Array.prototype.forEach.call(document.querySelectorAll(".seg button"), function(x){
+      x.setAttribute("aria-pressed", x===b);
+    });
+  });
+});
+
+/* ================= params io ================= */
+function syncIO(){
+  if(document.activeElement===document.getElementById("io")) return;
+  document.getElementById("io").value=JSON.stringify({
+    кузов:S.body, маса_г:+S.mass.toFixed(1), тертя_осей:+S.mu.toFixed(3),
+    колія_мм:+S.gauge.toFixed(1), висота_ЦТ_мм:+S.hcg.toFixed(1),
+    Cd:+S.cd.toFixed(2), лобова_площа_см2:+S.area.toFixed(1), інерція_коліс:S.inertia,
+    airpod:S.pod, траса:S.track, висота_старту_см:+(S.drop*100).toFixed(0),
+    кут_спуску_град:S.slope, діаметр_петлі_см:+(S.loopD*100).toFixed(0),
+    радіус_повороту_см:+(S.crad*100).toFixed(0), нахил_віражу_град:S.bank
+  }, null, 2);
+}
+document.getElementById("apply").addEventListener("click", function(){
+  var msg=document.getElementById("ioMsg");
+  try{
+    var o=JSON.parse(document.getElementById("io").value);
+    var num=function(x,lo,hi,d){ var v=parseFloat(x); return isFinite(v)?Math.min(hi,Math.max(lo,v)):d; };
+    if(o["кузов"] && BODIES.some(function(b){return b.id===o["кузов"];})) S.body=o["кузов"];
+    if(o["траса"] && TRACKS.some(function(t){return t.id===o["траса"];})) S.track=o["траса"];
+    S.mass=num(o["маса_г"],22,75,S.mass);
+    S.mu=num(o["тертя_осей"],0.006,0.070,S.mu);
+    S.gauge=num(o["колія_мм"],18,34,S.gauge);
+    S.hcg=num(o["висота_ЦТ_мм"],5,26,S.hcg);
+    S.cd=num(o["Cd"],0.25,1.10,S.cd);
+    S.area=num(o["лобова_площа_см2"],2.5,12,S.area);
+    S.inertia=num(o["інерція_коліс"],0,0.2,S.inertia);
+    S.drop=num(o["висота_старту_см"],12,150,S.drop*100)/100;
+    S.slope=num(o["кут_спуску_град"],15,60,S.slope);
+    S.loopD=num(o["діаметр_петлі_см"],12,45,S.loopD*100)/100;
+    S.crad=num(o["радіус_повороту_см"],12,50,S.crad*100)/100;
+    S.bank=num(o["нахил_віражу_град"],0,70,S.bank);
+    S.pod=!!o["airpod"];
+    paintShapes();
+    Array.prototype.forEach.call(document.querySelectorAll(".trk"), function(b,i){
+      b.setAttribute("aria-pressed", TRACKS[i].id===S.track);
+    });
+    trackFields(); syncInputs(); render(true);
+    msg.className="io-msg good"; msg.textContent="Застосовано.";
+  }catch(err){
+    msg.className="io-msg err"; msg.textContent="Не вдалося прочитати JSON — перевір коми й лапки.";
+  }
+});
+document.getElementById("copy").addEventListener("click", function(){
+  var msg=document.getElementById("ioMsg"), ta=document.getElementById("io");
+  try{
+    navigator.clipboard.writeText(ta.value).then(function(){
+      msg.className="io-msg good"; msg.textContent="Скопійовано в буфер.";
+    }, function(){ ta.select(); msg.className="io-msg"; msg.textContent="Виділено — тисни ⌘C."; });
+  }catch(e){ ta.select(); msg.className="io-msg"; msg.textContent="Виділено — тисни ⌘C."; }
+});
+
+/* ================= boot ================= */
+setupChart("cSpeed","tip1",[{key:"v",color:"--c-speed",label:"v"}],"м/с",false);
+setupChart("cLoad","tip2",[{key:"g",color:"--c-load",label:"притиск"},{key:"l",color:"--c-fric",label:"бічне"}],"g",true);
+buildShapes(); buildTracks(); syncInputs();
+RUN=simulate(); autoFit();
+render(false); syncInputs();
+
+var rt;
+window.addEventListener("resize", function(){
+  clearTimeout(rt);
+  rt=setTimeout(function(){ drawStage(); drawChart("cSpeed"); drawChart("cLoad"); }, 140);
+});
+if(window.matchMedia){
+  var mq=window.matchMedia("(prefers-color-scheme: dark)");
+  if(mq.addEventListener) mq.addEventListener("change", function(){ setTimeout(function(){ render(false); }, 30); });
+}
+})();
+</script>
+
+</body>
+</html>

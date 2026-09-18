@@ -19,7 +19,7 @@ The sidebar has three main destinations: **Record**, **Runs**, and **Device**, w
 
 - **Record** guides you through Connect → Calibrate → Record. Click any step to review it. Connection opens first when fresh motion is unavailable; calibration opens when the selected mount needs it. Capture a level pose, then a nose-up pose at 15–45°. Capture progress and corrections appear inline. Once ready, the screen shows the recording timer and run setup.
 - **Recalibrate** appears beside the calibration status for the selected AirPod. Use it whenever the mount changes. Calibration remains separate for each side, and recalibration is disabled while recording.
-- **Runs** opens the saved library. Open a recording to switch between **3D Track** and **Analysis**, export its data, or access algorithm comparison under **Advanced**. **Compare runs** opens the multi-run comparison.
+- **Runs** opens the saved library, described under [The saved-run library](#the-saved-run-library). Open a recording to switch between **3D Track** and **Analysis**, export its data, or access algorithm comparison under **Advanced**. **Compare runs** opens the multi-run comparison.
 - **Device** groups **Live signals** and **Diagnostics**.
 
 ## Build and launch
@@ -183,7 +183,7 @@ Simulation ground-truth positions are used only to generate test inputs and vali
 - **Diagnostics:** real connection/availability/authorization, API active state, bud location, receipt age, observed frequency, quaternion, Euler angles, all acceleration/gravity/rate components and magnitudes, and a bounded event log.
 - **Live Dashboard:** rolling sensor-frame plots, sample-rate jitter, pause/resume, clear, record/stop, and buffered CSV export. Plot thinning is for display only.
 - **Run Analysis:** run metadata, speed/length/duration, candidate segment list and layered timeline, raw evidence, and detailed assumptions and scale corrections. Click a segment or scrub time to move all markers. Speed charts also support distance along the path.
-- **Track Visualization:** simple orange SceneKit road with raised rails and sparse supports. Drag to orbit, scroll to zoom, or **Fit view** to reset. **Play run / Pause** replays a red sports car with a rear spoiler and a visible white AirPod mounted on its roof. Wheels turn with replay distance, and the car follows the road through slopes, turns, and upside-down loop sections. Pausing and moving the time cursor also stop or seek the car and wheels. The charts stay synchronized. Saved Runs & Compare also uses red cars, with stripes matching each run’s track colour. Ground and highest-level planes show 0/H with a height bracket. **Height planes** can hide them; **Speed colors** preserves the telemetry coloring. Event dots are optional. The car, AirPod, road width (illustrative 6 cm), thickness, rails, roll and supports are schematic, not measured dimensions or mounting orientation.
+- **Track Visualization:** simple orange SceneKit road with raised rails and sparse supports. The play line below it carries the candidate events and the range handles described in [The play line](#the-play-line-events-range-and-exporting-part-of-a-run). Drag to orbit, scroll to zoom, or **Fit view** to reset. **Play run / Pause** replays a red sports car with a rear spoiler and a visible white AirPod mounted on its roof. Wheels turn with replay distance, and the car follows the road through slopes, turns, and upside-down loop sections. Pausing and moving the time cursor also stop or seek the car and wheels. The charts stay synchronized. Saved Runs & Compare also uses red cars, with stripes matching each run’s track colour. Ground and highest-level planes show 0/H with a height bracket. **Height planes** can hide them; **Speed colors** preserves the telemetry coloring. Event dots are optional. The car, AirPod, road width (illustrative 6 cm), thickness, rails, roll and supports are schematic, not measured dimensions or mounting orientation.
 - **Measure A–B:** turn on the ruler, then click two points on the road. Cyan is A, pink is B. Read **Straight A–B**, **Along track**, **Horizontal**, and signed **Δ height (B − A)** in cm. Dragging still rotates. For precise time selection or overlapping parts, move the cursor and click **Set A at cursor / Set B at cursor**. **Pick A/B** chooses which endpoint the next click replaces; **Swap** and **Clear** are available. Measurements snap to/interpolate the original centerline, not the road edges or display-thinned mesh. These remain estimates, with no metrology accuracy claim.
 - **Height H:** enter one cm value in the 3D panel and **Apply height** to reconstruct a saved run. Measurements retain their selected times and update with the new scale. An optional known along-track length is under advanced setup / saved-run editing. Height-range mode does not require a lowest finish or a fixed track template.
 - **Top-down XY:** equal horizontal axis scale. X points along the initial horizontal forward direction, Y left, Z upward. X/Y start at the run's start. There is no north or Mac-relative reference. **Side profile:** estimated distance along path versus height above the lowest point, with lower/upper guides; chart axes scale independently.
@@ -193,6 +193,44 @@ Simulation ground-truth positions are used only to generate test inputs and vali
 Candidate segments include start, release, downhill, flat, uphill, left/right turns, bumps, possible airtime/landing, and finish/rest. Slope, turn, and event layers overlap. **Do not sum their lengths or durations.** Average run speed uses the candidate motion interval, not the full recorded pre/post-roll. Peak user-acceleration magnitude is a scalar derived from observed API values; it is not an independently estimated speed derivative or a force measurement.
 
 Saved runs can be edited with **Edit constraints & notes**. An optional known **total along-track length** in cm can be added later. This is not the straight-line finish distance. Estimates are recomputed; raw samples remain attached to the run.
+
+## The play line: events, range, and exporting part of a run
+
+Under the 3D view, the play line replaces the plain time slider in both **Track Visualization** and **Run Analysis**.
+
+- **Candidate events are drawn on it.** Release, bumps, possible airtime, possible landing and finish appear as coloured ticks; continuous downhill, flat, uphill and turn candidates appear as bands in their own lanes. The legend names every kind present in the recording. These are the same heuristic candidates as the segment list and the white dots in 3D — not detected physical events.
+- **The white playhead** is the shared time cursor. Click or drag anywhere on the line to move it; the 3D car, charts and readouts follow.
+- **Two handles limit the shown range.** Drag either one to keep part of the run; while dragging they snap to nearby candidate boundaries, and the **«** / **»** buttons move a handle exactly one boundary at a time. **Trim to playhead** moves the start to the cursor, **Whole run** clears the range.
+
+The 3D view, the top-down XY plot and the side profile then show only that part, and playback runs inside it. **Ground, H, the grid and the height bracket keep the whole recording's datum**, so a range never relabels the construction's height; the ends of a partial road are marked **FROM** and **TO** rather than START and FINISH. Nothing is recalculated: a range selects rows of the existing reconstruction.
+
+**Export N s…** beside the handles exports only that range, with the same format and dataset choices as a full run export. Raw files keep the original API values and their `elapsed_s` still counts from the recording's first sample, so a row is identical in the full and the partial file. Reconstructed files keep their positions, speeds and cumulative distance along the path, which still counts from the start of the run; only the per-window totals — duration, path length, top and average speed, height range, candidate airtime — are recomputed from the selected rows. Every exported file records the range: the filename carries it, raw JSON adds it to the recording notes with the run ID it came from, and analysis JSON adds a warning stating that the fit, its scale and its endpoint assumptions come from the complete recording.
+
+## The saved-run library
+
+**Runs** lists every saved recording. Each row identifies the run before you open it: car and track names, the AirPod side that actually produced the samples, the recording date, its duration and sample count, the entered **H**, and a status line.
+
+- **3D path ready** shows the estimated path length, top speed and average speed of the selected algorithm, in that run's own units — **m** and **m/s** with a measured scale, **u** and **u/s** for a relative shape. **Relative 3D shape** marks a run whose scale is unknown; a summary line above the list warns when the library mixes both.
+- **No 3D path** carries the reconstruction's own reason, **Raw only · no calibration** marks a recording saved without a mounting profile, and **Reconstructing…** appears while the analysis is still running. These recordings stay listed and exportable; the library never invents a path for them.
+- Recording-quality notes, including a missing still start or finish, appear on the row rather than only inside Run Analysis.
+
+**Search** accepts any combination of car, track, AirPod side, date and run ID; the words may be typed in any order and each one narrows the list further. **Sort** orders by date, recording length, estimated path length, estimated top speed or car name — runs without a reconstruction always rank last under the estimated orders, and estimated orders compare each run's own scale, which differs when some runs are relative. **Filter** narrows by source (Right, Left, Simulation) and by status (with or without a 3D path, measured height, unknown scale). ⌘F moves focus to the search field. A run still being reconstructed is neither *with* nor *without* a 3D path until its analysis finishes.
+
+Every row carries **Export** and an actions menu, also available by right-clicking: open the 3D track or the analysis, add the run to the comparison, edit its name and height, recalculate its reconstruction, copy the run ID, reveal its JSON file in Finder, or move it to Recently Deleted. The summary line above the list reports how many runs are saved, how many have a 3D path, the total recorded duration and how many rows the current filters show, with a link that reveals the library folder.
+
+### Select several runs
+
+Each row has a checkbox. Ticking one opens a selection bar above the list with **Select all**, **Export N selected…** and **Delete N…**. Shift-clicking a checkbox extends the selection from the previously clicked row, so a long block needs two clicks. Selection follows the visible list: rows hidden by the current search or filter are not part of it, and a recording that is removed or restored leaves the selection.
+
+**Delete N…** asks for confirmation, then moves each selected recording to **Recently Deleted**. Nothing is erased: raw samples, calibration, names and heights are kept, **Undo** in the notice restores the whole group at once, and **Recently Deleted** also offers **Restore all**. A recording that cannot be moved stays in the library and is named in the reported error, while the rest are still removed.
+
+### Export the whole library
+
+**Export N runs…** exports every run currently listed — apply a search or filter first to export a subset, or tick rows and use **Export N selected…** instead. Choose the format and which datasets to write per run, exactly as for a single run. One file per run per dataset is written into a ZIP.
+
+**Include run index** adds `PodTrack-runs-index.csv`, one row per exported run: run ID, ISO-8601 recording date, track and car, recorded side, source, status, algorithm and its version, sample count, recording and motion duration, entered H and known length in cm, scale basis, that run's distance and speed units, and its estimated path length, top and average speed, height range, candidate airtime and observed peak user acceleration. The index uses the estimates already computed for the selected algorithm; a run without a reconstruction keeps empty estimate columns instead of a substituted value.
+
+A recording that cannot produce a selected dataset does not cancel a library export. It is skipped, listed in `export-report.txt` inside the archive, and reported in the dialog. A single-run export is unchanged: if any selected dataset fails, nothing is written.
 
 ## Compare two cars
 
@@ -228,13 +266,15 @@ The separate comparison is computed in memory; opening it does not replace saved
 
 ### Delete and restore recordings
 
-Use the trash button on a saved-run card, or **Delete recording** beside the run picker in Run Analysis or Track Visualization. Deletion removes that recording from the active library and comparison, cancels pending reconstruction and clears its cached results. If the displayed recording is removed, the next available run is selected.
+Use **Delete recording** in a library row's actions menu, the trash button on a saved-run card, or **Delete recording** beside the run picker in Run Analysis or Track Visualization. Deletion removes that recording from the active library and comparison, cancels pending reconstruction and clears its cached results. If the displayed recording is removed, the next available run is selected.
 
-The recording moves to **Recently Deleted**, stored locally under `Runs/RecentlyDeleted/`. Use **Undo** immediately or **Recently Deleted → Restore** later, including after restarting the app. Raw samples, calibration, names, height and notes are retained. Removed recordings are not automatically purged. If writing or moving the file fails, the app keeps the recording visible and reports the error; restoration never overwrites an existing recording with the same ID.
+To remove several at once, tick their checkboxes in the Runs list and use **Delete N…**; see [Select several runs](#select-several-runs). Each recording is moved separately, so one that cannot be removed stays visible and listed in the reported error while the others still go.
+
+The recordings move to **Recently Deleted**, stored locally under `Runs/RecentlyDeleted/`. Use **Undo** immediately — it restores the whole group of the last deletion — or **Recently Deleted → Restore**, or **Restore all**, later, including after restarting the app. Raw samples, calibration, names, height and notes are retained. Removed recordings are not automatically purged. If writing or moving the file fails, the app keeps the recording visible and reports the error; restoration never overwrites an existing recording with the same ID.
 
 ## Files and exports
 
-The **Export** button opens a dialog with only **Raw data** selected and **CSV** as the default. Choose JSON or select additional datasets (Improved, Old) from the multi-select dropdown. One dataset saves one file; multiple datasets save a ZIP with one file per dataset. Raw JSON includes the complete recording, metadata, and calibration. Algorithm exports use the chosen method independently of the currently displayed algorithm; unavailable results are calculated in the background. If any selected dataset fails, the export reports the error and does not save a partial archive.
+**Export N s…** on the play line exports only the selected range of one run; see [The play line](#the-play-line-events-range-and-exporting-part-of-a-run). The **Export** button opens a dialog with only **Raw data** selected and **CSV** as the default. Choose JSON or select additional datasets (Improved, Old) from the multi-select dropdown. One dataset saves one file; multiple datasets save a ZIP with one file per dataset. **Export N runs…** in the Runs library applies the same choices to every listed recording and can add a run index; see [Export the whole library](#export-the-whole-library). Raw JSON includes the complete recording, metadata, and calibration. Algorithm exports use the chosen method independently of the currently displayed algorithm; unavailable results are calculated in the background. If any selected dataset fails, the export reports the error and does not save a partial archive.
 
 Runs are stored as versioned, atomically written JSON files under:
 
@@ -276,7 +316,21 @@ build/PodTrack.app/Contents/MacOS/PodTrack --verify-library \
   Tests/PodTrackCoreTests/Fixtures/repeated-circuit.json build/default-improved/verification --render
 ```
 
-Tests cover buffer order, sampling statistics, arbitrary mounting calibration, invalid poses, recording boundaries and sensor switches, persistence/CSV, smoothing, heading wrap, curvature, analytic ramp speed/geometry, quaternion conventions, synthetic turns/jump/landing, quiet middle sections, constraints, and invalid/degenerate inputs. Passing synthetic tests is not a measurement-accuracy guarantee. See [docs/VALIDATION.md](docs/VALIDATION.md) for the development results and hardware test to report back.
+To render the play line with its candidate events and a selected range, and to write the windowed exports for inspection without the save panel:
+
+```sh
+build/PodTrack.app/Contents/MacOS/PodTrack --render-timeline build/verification-timeline
+```
+
+To render the saved-run library, its bulk export dialog and a sample run index from synthetic recordings, without hardware and without reading your own library:
+
+```sh
+build/PodTrack.app/Contents/MacOS/PodTrack --render-run-library build/verification-run-library
+```
+
+It writes four fixture recordings — measured, unknown scale, a second height and one without calibration — into an isolated library, renders the list at the 840 pt minimum content width and wider, and saves `PodTrack-runs-index.csv` for inspection.
+
+Tests cover buffer order, sampling statistics, arbitrary mounting calibration, invalid poses, recording boundaries and sensor switches, persistence/CSV, smoothing, heading wrap, curvature, analytic ramp speed/geometry, quaternion conventions, synthetic turns/jump/landing, quiet middle sections, constraints, invalid/degenerate inputs, library search/sort/filter rules, library export including skipped recordings, and time-window selection, clipping and partial export. Passing synthetic tests is not a measurement-accuracy guarantee. See [docs/VALIDATION.md](docs/VALIDATION.md) for the development results and hardware test to report back.
 
 ## Architecture and remaining limitations
 

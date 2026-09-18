@@ -49,13 +49,14 @@ struct DebugEvent: Identifiable {
     @Published var recordingDuration: Double = 0
     @Published var runs: [RunSession] = []
     @Published private(set) var deletedRuns: [RunSession] = []
-    @Published var lastDeletedRunID: UUID?
+    /// The recordings removed by the most recent delete, in removal order: the Undo group.
+    @Published var lastDeletedRunIDs: [UUID] = []
     @Published private(set) var reconstructionMethod: ReconstructionMethod = .improved
     @Published private(set) var comparedRunIDs: Set<UUID> = []
     @Published private(set) var comparisonColors: [UUID:Int] = [:]
     @Published var comparisonNotice: String?
     @Published var selectedRunID: UUID? {
-        didSet { if selectedRunID != oldValue { rulerSelection = .init(); cursorTime = 0 } }
+        didSet { if selectedRunID != oldValue { rulerSelection = .init(); cursorTime = 0; timeWindow = nil } }
     }
     @Published var errorMessage: String?
     @Published var unsavedIDs: Set<UUID> = []
@@ -70,6 +71,9 @@ struct DebugEvent: Identifiable {
     private var errorCache: [ReconstructionMethod:[UUID:String]] = [:]
     private var analysisTasks: [UUID:(token:UUID,task:Task<Void,Never>)] = [:]
     @Published var cursorTime: Double = 0
+    /// Part of the selected run shown in 3D and offered for export. Nil is the whole run.
+    /// It selects rows of the existing reconstruction; no run is ever refitted to a window.
+    @Published var timeWindow: TimeWindow?
     @Published var rulerSelection = TrackRulerSelection()
     @Published var rulerEnabled = false
     private var recorder = RunRecorder()
@@ -320,6 +324,10 @@ struct DebugEvent: Identifiable {
         }
         area = .compare
     }
+    /// Reconstructed points limited to the selected time window, for the geometry views.
+    func windowedPoints(_ result: AnalysisResult) -> [TrackPoint] {
+        timeWindow.map { window in result.points.filter { window.contains($0.time) } } ?? result.points
+    }
     func openRun(_ run: RunSession, in destination: AppArea = .track) {
         selectedRunID = run.id; ensureAnalysis(run); area = destination
     }
@@ -540,7 +548,7 @@ struct DebugEvent: Identifiable {
         cancelAnalyses()
         reconstructionMethod = method
         analyses = analysisCache[method] ?? [:]; analysisErrors = errorCache[method] ?? [:]
-        cursorTime = 0; rulerSelection = .init(); comparisonNotice = nil
+        cursorTime = 0; timeWindow = nil; rulerSelection = .init(); comparisonNotice = nil
         // Retain comparison selections while the requested method is being computed.
         // No old-method geometry may be displayed under the new method's label.
         for run in comparisonRuns where analysisErrors[run.id] != nil { removeFailedComparison(run) }
@@ -622,21 +630,36 @@ struct DebugEvent: Identifiable {
         } catch { errorMessage = "Could not read Recently Deleted: \(error.localizedDescription)" }
     }
 
-    func deleteRecording(_ run: RunSession) {
-        guard let index = runs.firstIndex(where:{$0.id == run.id}) else { return }
-        let current = runs[index]
-        do {
-            try store.moveToRecentlyDeleted(current)
-            invalidateAnalysis(current.id)
-            setCompared(current,selected:false)
-            runs.remove(at:index); unsavedIDs.remove(current.id)
-            deletedRuns.removeAll { $0.id == current.id }; deletedRuns.insert(current,at:0)
-            lastDeletedRunID = current.id
-            if selectedRunID == current.id {
-                selectedRunID = runs.isEmpty ? nil : runs[min(index,runs.count-1)].id
-                if let next = selectedRun { ensureAnalysis(next) }
-            }
-        } catch { errorMessage = "Recording was not removed: \(error.localizedDescription)" }
+    func deleteRecording(_ run: RunSession) { deleteRecordings([run]) }
+
+    /// Remove several recordings in one action. Each one is moved separately, so a failure
+    /// on one recording leaves it active and visible while the others still go; every
+    /// failure is reported. Only the recordings actually removed become the Undo group.
+    @discardableResult func deleteRecordings(_ targets: [RunSession]) -> Int {
+        var removed: [UUID] = [], failures: [String] = [], selectionMoved = false
+        for target in targets {
+            guard let index = runs.firstIndex(where:{$0.id == target.id}) else { continue }
+            let current = runs[index]
+            do {
+                try store.moveToRecentlyDeleted(current)
+                invalidateAnalysis(current.id)
+                setCompared(current,selected:false)
+                runs.remove(at:index); unsavedIDs.remove(current.id)
+                deletedRuns.removeAll { $0.id == current.id }; deletedRuns.insert(current,at:0)
+                removed.append(current.id)
+                if selectedRunID == current.id {
+                    selectedRunID = runs.isEmpty ? nil : runs[min(index,runs.count-1)].id
+                    selectionMoved = true
+                }
+            } catch { failures.append("\(current.displayName): \(error.localizedDescription)") }
+        }
+        if !removed.isEmpty { lastDeletedRunIDs = removed }
+        if selectionMoved, let next = selectedRun { ensureAnalysis(next) }
+        if !failures.isEmpty {
+            errorMessage = failures.count == 1 ? "Recording was not removed: \(failures[0])"
+                : "\(failures.count) of \(targets.count) recordings were not removed:\n" + failures.joined(separator:"\n")
+        }
+        return removed.count
     }
 
     func restoreRecording(_ run: RunSession) {
@@ -645,11 +668,21 @@ struct DebugEvent: Identifiable {
             try store.restore(run.id)
             runs.append(run); runs.sort { $0.createdAt>$1.createdAt }
             deletedRuns.removeAll { $0.id == run.id }
-            if lastDeletedRunID == run.id { lastDeletedRunID = nil }
+            lastDeletedRunIDs.removeAll { $0 == run.id }
             if selectedRunID == nil { selectedRunID = run.id }
             ensureAnalysis(run)
         } catch { errorMessage = "Recording could not be restored: \(error.localizedDescription)" }
     }
+
+    /// Undo for the most recent removal, whether it moved one recording or many.
+    func restoreLastDeleted() {
+        for id in lastDeletedRunIDs {
+            guard let run = deletedRuns.first(where:{$0.id == id}) else { continue }
+            restoreRecording(run)
+        }
+    }
+
+    func restoreRecordings(_ targets: [RunSession]) { targets.forEach { restoreRecording($0) } }
     func exportTrack(_ run: RunSession) {
         guard let result = analyses[run.id] else { return }
         SaveExporter.save(text:CSVExporter.reconstructedTrack(result),name:"\(run.exportBasename)-\(reconstructionMethod.rawValue.lowercased())-estimated-track.csv",json:false) { errorMessage = $0 }

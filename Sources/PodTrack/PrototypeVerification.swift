@@ -183,6 +183,24 @@ import PodTrackCore
                 FileHandle.standardError.write(Data("Unknown-height render failed: \(error.localizedDescription)\n".utf8)); exit(1)
             }
         }
+        if let index = arguments.firstIndex(of:"--render-timeline") {
+            do {
+                let output = URL(fileURLWithPath:arguments.count>index+1 ? arguments[index+1] : "build/verification-timeline",isDirectory:true)
+                try renderTimeline(output:output)
+                exit(0)
+            } catch {
+                FileHandle.standardError.write(Data("Timeline render failed: \(error.localizedDescription)\n".utf8)); exit(1)
+            }
+        }
+        if let index = arguments.firstIndex(of:"--render-run-library") {
+            do {
+                let output = URL(fileURLWithPath:arguments.count>index+1 ? arguments[index+1] : "build/verification-run-library",isDirectory:true)
+                try renderRunLibrary(output:output)
+                exit(0)
+            } catch {
+                FileHandle.standardError.write(Data("Run library render failed: \(error.localizedDescription)\n".utf8)); exit(1)
+            }
+        }
         if let index = arguments.firstIndex(of:"--render-guide") {
             do {
                 let output = URL(fileURLWithPath:arguments.count>index+1 ? arguments[index+1] : "build/verification-guide",isDirectory:true)
@@ -439,6 +457,107 @@ import PodTrackCore
             try renderView(guide,to:output.appendingPathComponent("guide-scale-\(language.rawValue).png"))
         }
         print("Rendered unknown-height setup, relative analysis, ruler, comparison and bilingual scale guide. Synthetic fixtures; no hardware or user library access.")
+    }
+    /// The play line with its candidate events, the range handles, and the 3D view limited to
+    /// a window. It also writes the windowed exports, so the trimmed files can be inspected
+    /// without the save panel. Synthetic motion; no hardware and no access to the user's library.
+    private static func renderTimeline(output: URL) throws {
+        try FileManager.default.createDirectory(at:output,withIntermediateDirectories:true)
+        let fixture = SimulatedTrack.generate(drop:0.58,includeJump:true,profile:.circuit)
+        let run = RunSession(createdAt:Date(timeIntervalSince1970:1_789_401_600),source:.simulation,
+                             metadata:.init(trackName:"Timeline preview",verticalDrop:0.58),
+                             calibration:fixture.calibration,samples:fixture.samples)
+        let store = RunStore(directory:output.appendingPathComponent("PreviewLibrary",isDirectory:true))
+        try store.save(run)
+        let result = try ReconstructionMethod.improved.analyze(run)
+        let model = AppModel(motionSource:InterfacePreviewMotionSource(),store:store)
+        defer { model.shutdown() }
+        model.selectedRunID = run.id
+        guard let device = MTLCreateSystemDefaultDevice() else { throw PodTrackError.invalid("No Metal renderer") }
+        let renderer = SCNRenderer(device:device,options:nil)
+        // A window between two detected candidates, the same choice the handles snap to.
+        let markers = RunTimeline.snapTimes(RunTimeline.markers(segments:result.segments,duration:run.duration),duration:run.duration)
+        let window = TimeWindow(start:markers[max(1,markers.count/4)],end:markers[min(markers.count-1,markers.count*3/4)])
+        for (name,selected) in [("timeline-whole-run",TimeWindow?.none),("timeline-window",window)] {
+            model.timeWindow = selected
+            model.cursorTime = (selected ?? .init(start:0,end:run.duration)).clamping(run.duration*0.45)
+            var options = TrackSceneOptions(); options.showEvents = true; options.window = selected
+            let scene = TrackScene.make(result:result,options:options)
+            renderer.scene = scene
+            renderer.pointOfView = scene.rootNode.childNode(withName:"camera",recursively:false)
+            let image = renderer.snapshot(atTime:0,with:.init(width:1100,height:620),antialiasingMode:.multisampling4X)
+            let view = TrackExplorerView(run:run,result:result,sceneHeight:360,renderedScene:image).environmentObject(model)
+                .frame(width:900).padding(20)
+            try renderView(view,to:output.appendingPathComponent("\(name).png"))
+        }
+        // The exports a user gets from Export selection…, written straight to the folder.
+        let cache = AnalysisDiskCache(directory:store.directory.appendingPathComponent("AnalysisCache",isDirectory:true))
+        for dataset in RunExportDataset.all {
+            for format in RunExportFormat.allCases {
+                let data = try dataset.data(run:run,format:format,cache:cache,window:window)
+                try data.write(to:output.appendingPathComponent("window-\(dataset.suffix).\(format.fileExtension)"),options:.atomic)
+            }
+        }
+        let trimmed = result.trimmed(to:window)
+        print(String(format:"Rendered the play line for a %.2f s run with %d candidates, and a %@ window keeping %d of %d points and %d of %d candidates.",
+                     run.duration,result.segments.count,window.label,trimmed.points.count,result.points.count,trimmed.segments.count,result.segments.count))
+        print(String(format:"Window estimates: %.3f %@ of path, top %.3f %@. Whole run: %.3f %@, top %.3f %@.",
+                     trimmed.metrics.estimatedPathLength,trimmed.distanceUnit,trimmed.metrics.estimatedMaximumSpeed,trimmed.speedUnit,
+                     result.metrics.estimatedPathLength,result.distanceUnit,result.metrics.estimatedMaximumSpeed,result.speedUnit))
+        print("Artifacts: \(output.path)")
+    }
+
+    /// Synthetic saved-run library: measured, relative, raw-only and unreconstructable
+    /// recordings side by side, so the list's status, metrics and filters can be inspected
+    /// without hardware and without touching the user's own library.
+    private static func renderRunLibrary(output: URL) throws {
+        try FileManager.default.createDirectory(at:output,withIntermediateDirectories:true)
+        let store = RunStore(directory:output.appendingPathComponent("PreviewLibrary",isDirectory:true))
+        let fixtures: [(String,String,Double?,SensorLocation,SimulationProfile,Bool)] = [
+            ("Blue Falcon","Loop circuit",0.58,.right,.circuit,true),
+            ("Red Baron","Loop circuit",nil,.left,.sBends,true),
+            ("Blue Falcon","Ramp test",0.32,.right,.raisedFinish,true),
+            ("Green Racer","Ramp test",0.58,.left,.circuit,false)
+        ]
+        for (index,fixture) in fixtures.enumerated() {
+            let (car,track,height,side,profile,calibrated) = fixture
+            let generated = SimulatedTrack.generate(drop:height ?? 0.42,includeJump:index == 0,variation:Double(index)/20,profile:profile)
+            let samples = generated.samples.map { sample -> MotionSample in
+                var moved = sample; moved.sensorLocation = side; return moved
+            }
+            let calibration = MountCalibration(forwardDevice:generated.calibration.forwardDevice,upDevice:generated.calibration.upDevice,
+                                               sensorLocation:side,source:.airPods)
+            let run = RunSession(createdAt:Date(timeIntervalSince1970:1_789_401_600-Double(index)*3600),source:.airPods,
+                                 metadata:.init(trackName:track,carName:car,verticalDrop:height),
+                                 calibration:calibrated ? calibration : nil,samples:samples,
+                                 recordingNotes:index == 3 ? ["Recording ended early: no new samples for 1 s."] : [])
+            try store.save(run)
+        }
+        // The library is read once when the model opens, so save the fixtures first.
+        let model = AppModel(motionSource:InterfacePreviewMotionSource(),store:store)
+        defer { model.shutdown() }
+        model.prepareComparison()
+        // Analysis runs on background tasks; let them finish before capturing the list.
+        let deadline = Date().addingTimeInterval(20)
+        while !model.analysingIDs.isEmpty && Date()<deadline {
+            RunLoop.current.run(until:Date().addingTimeInterval(0.05))
+        }
+        let library = RunLibraryView(startComparison:{}).environmentObject(model)
+            .frame(width:840,height:900)
+        try renderView(library,to:output.appendingPathComponent("run-library-minimum-width.png"))
+        let wide = RunLibraryView(startComparison:{}).environmentObject(model).frame(width:1180,height:900)
+        try renderView(wide,to:output.appendingPathComponent("run-library-wide.png"))
+        let selected = Set(model.runs.prefix(2).map(\.id))
+        let multiSelect = RunLibraryView(startComparison:{},initialSelection:selected).environmentObject(model)
+            .frame(width:1180,height:900)
+        try renderView(multiSelect,to:output.appendingPathComponent("run-library-multiple-selected.png"))
+        let sheet = LibraryExportSheet(runs:model.runs).environmentObject(model)
+        try renderView(sheet,to:output.appendingPathComponent("library-export-sheet.png"))
+        let entries = model.runs.map { RunIndexEntry(run:$0,result:model.analyses[$0.id],status:model.reconstructionState($0).label) }
+        try Data(CSVExporter.runIndex(entries,method:model.reconstructionMethod).utf8)
+            .write(to:output.appendingPathComponent("PodTrack-runs-index.csv"),options:.atomic)
+        print("Rendered the saved-run library at minimum and wide width, its bulk export sheet, and a sample run index for \(model.runs.count) synthetic recordings (\(model.analyses.count) reconstructed). No hardware, no user library.")
+        print("Artifacts: \(output.path)")
     }
     private static func renderGuide(output: URL) throws {
         try FileManager.default.createDirectory(at:output,withIntermediateDirectories:true)

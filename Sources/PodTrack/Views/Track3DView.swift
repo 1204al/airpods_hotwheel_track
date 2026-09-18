@@ -7,6 +7,9 @@ struct TrackSceneOptions: Equatable {
     var appearance: TrackAppearance = .orange
     var showPlanes = true
     var showEvents = false
+    /// Draws only this part of the run. Ground, H and the grid keep the whole run's datum,
+    /// so a window never relabels the construction's height.
+    var window: TimeWindow? = nil
 }
 
 struct TrackRulerSelection: Equatable {

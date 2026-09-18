@@ -102,7 +102,6 @@ struct RunsWorkspace: View {
     @EnvironmentObject var model: AppModel
     @Environment(\.openWindow) private var openWindow
     @State private var comparing = false
-    @State private var search = ""
     var body: some View {
         VStack(spacing:0) {
             if model.area == .track || model.area == .analysis {
@@ -129,38 +128,8 @@ struct RunsWorkspace: View {
                 }.padding(20)
                 CompareRunsView()
             } else {
-                library
+                RunLibraryView(startComparison:{ comparing = true })
             }
         }
-    }
-    private var library: some View {
-        VStack(alignment:.leading,spacing:20) {
-            HStack {
-                Text("Runs").font(.largeTitle.bold())
-                Spacer()
-                Button("Compare runs") { comparing = true }.disabled(model.runs.count < 2)
-                RecentlyDeletedButton()
-            }
-            TextField("Search runs",text:$search).textFieldStyle(.roundedBorder)
-            DeletedRecordingNotice()
-            if model.runs.isEmpty {
-                ContentUnavailableView("No saved runs",systemImage:"tray",description:Text("Record your first run to explore its track and signals."))
-                Button("Record a run") { model.area = .record }.buttonStyle(.borderedProminent)
-            } else {
-                List(model.runs.filter { search.isEmpty || $0.displayName.localizedCaseInsensitiveContains(search) }) { run in
-                    Button { model.openRun(run) } label: {
-                        HStack {
-                            VStack(alignment:.leading,spacing:6) {
-                                Text(run.displayName).font(.headline)
-                                Text(run.createdAt.formatted()).font(.caption).foregroundStyle(.secondary)
-                            }
-                            Spacer()
-                            Text("H \(run.metadata.heightLabel)").foregroundStyle(.secondary)
-                            Image(systemName:"chevron.right").foregroundStyle(.secondary)
-                        }.padding(.vertical,10).contentShape(Rectangle())
-                    }.buttonStyle(.plain)
-                }.listStyle(.plain)
-            }
-        }.padding(28)
     }
 }
