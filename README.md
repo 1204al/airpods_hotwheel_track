@@ -13,6 +13,15 @@ Repository/project: `airpods-hotwheels-track`. Application: **PodTrack**. SwiftU
 
 **There is no true absolute position or direct speed measurement.** Height-constrained geometry and speed are estimates, often with substantial drift. A single height constraint does not make the reconstruction unique. The car needs a rigid mounting and must keep its orientation aligned with its travel direction for useful results.
 
+## Navigation and guided recording
+
+The sidebar has three main destinations: **Record**, **Runs**, and **Device**, with **Help** below.
+
+- **Record** guides you through Connect → Calibrate → Record. Click any step to review it. Connection opens first when fresh motion is unavailable; calibration opens when the selected mount needs it. Capture a level pose, then a nose-up pose at 15–45°. Capture progress and corrections appear inline. Once ready, the screen shows the recording timer and run setup.
+- **Recalibrate** appears beside the calibration status for the selected AirPod. Use it whenever the mount changes. Calibration remains separate for each side, and recalibration is disabled while recording.
+- **Runs** opens the saved library. Open a recording to switch between **3D Track** and **Analysis**, export its data, or access algorithm comparison under **Advanced**. **Compare runs** opens the multi-run comparison.
+- **Device** groups **Live signals** and **Diagnostics**.
+
 ## Build and launch
 
 Requires **macOS 14+** and **Xcode 15+ / Swift 5.9+**. Development validation used Xcode 26.6 and macOS 26.6.2; the deployment target is 14.0, but a physical macOS 14 machine has not been tested.
@@ -225,13 +234,15 @@ The recording moves to **Recently Deleted**, stored locally under `Runs/Recently
 
 ## Files and exports
 
+The **Export** button opens a dialog with only **Raw data** selected and **CSV** as the default. Choose JSON or select additional datasets (Improved, Old) from the multi-select dropdown. One dataset saves one file; multiple datasets save a ZIP with one file per dataset. Raw JSON includes the complete recording, metadata, and calibration. Algorithm exports use the chosen method independently of the currently displayed algorithm; unavailable results are calculated in the background. If any selected dataset fails, the export reports the error and does not save a partial archive.
+
 Runs are stored as versioned, atomically written JSON files under:
 
 ```text
 ~/Library/Application Support/PodTrack/Runs/
 ```
 
-No runs are uploaded. The library reports unreadable files instead of silently dropping them. Failed saves retain runs in memory and provide **Retry save**; export before closing if retry fails. Analysis is cached in memory and deterministically rebuilt from the raw session and settings when needed.
+No runs are uploaded. The library reports unreadable files instead of silently dropping them. Failed saves retain runs in memory and provide **Retry save**; export before closing if retry fails. Analysis is cached in memory and on disk under `Runs/AnalysisCache/`, separately for Improved and Old. Opening an unchanged run reuses its saved result, including after restarting the app. Changes to the recording or its settings (including height and length), cache revision, or algorithm version cause recalculation on demand. Missing or corrupt cache files are rebuilt automatically. **Recalculate** beside the algorithm picker forces a fresh calculation for the selected run and algorithm. Raw recordings are never replaced by cached results. Developers must increment `AnalysisDiskCache.revision` when changing reconstruction behavior or the cached result schema.
 
 Raw CSV preserves timestamps, quaternion, Euler angles, rotation rate, user acceleration, gravity, sensor location, and source. It adds elapsed time and projected vertical/tangential user-acceleration columns; tangential values are blank without calibration. These projected signals retain the sensor's sign convention. Track CSV includes time, **estimated** x/y/z, speed, distance, curvature, and candidate segment labels. Analysis JSON includes metadata, height interpretation, coordinate convention, mounting, algorithm version, signals, metrics, segments, inferred sign, scale factors, endpoint correction, and warnings. New height-range runs use Z=0 at ground and Z=H at the highest point. Older recordings without `heightConstraint` retain start Z=0 / finish Z=−H; no raw recordings are migrated. The `verticalDrop` and `enteredVerticalDrop` JSON field names are retained for compatibility and interpreted according to `heightConstraint`. Acceleration in processed JSON uses m/s²; orientation uses radians except explicitly named degree fields.
 

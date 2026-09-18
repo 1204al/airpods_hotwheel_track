@@ -18,3 +18,39 @@ public enum CSVExporter {
     public static func number(_ value: Double) -> String { value.isFinite ? String(format:"%.9g",locale:Locale(identifier:"en_US_POSIX"),value) : "" }
     public static func escaped(_ value: String) -> String { "\"" + value.replacingOccurrences(of:"\"",with:"\"\"") + "\"" }
 }
+
+public enum RunExportFormat: String, CaseIterable, Sendable {
+    case csv = "CSV", json = "JSON"
+    public var fileExtension: String { rawValue.lowercased() }
+}
+
+public enum RunExportDataset: Hashable, Sendable {
+    case raw
+    case algorithm(ReconstructionMethod)
+    public static var all: [Self] { [.raw] + ReconstructionMethod.allCases.map { .algorithm($0) } }
+    public var title: String {
+        switch self {
+        case .raw: return "Raw data"
+        case .algorithm(let method): return "\(method.rawValue) algorithm"
+        }
+    }
+    public var suffix: String {
+        switch self {
+        case .raw: return "raw"
+        case .algorithm(let method): return method.rawValue.lowercased()
+        }
+    }
+    public func data(run: RunSession, format: RunExportFormat, cache: AnalysisDiskCache) throws -> Data {
+        switch self {
+        case .raw:
+            if format == .csv { return Data(CSVExporter.rawRun(run).utf8) }
+            let encoder = JSONEncoder()
+            encoder.outputFormatting = [.prettyPrinted,.sortedKeys]
+            encoder.dateEncodingStrategy = .iso8601
+            return try encoder.encode(run)
+        case .algorithm(let method):
+            let result = try cache.load(run,method:method) ?? method.analyze(run)
+            return Data(try (format == .csv ? CSVExporter.reconstructedTrack(result) : CSVExporter.processedJSON(run:run,result:result)).utf8)
+        }
+    }
+}

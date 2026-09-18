@@ -9,6 +9,9 @@ struct ReconstructionMethodPicker: View {
                 ForEach(ReconstructionMethod.allCases,id:\.self) { Text($0.rawValue).tag($0) }
             }.pickerStyle(.segmented).frame(width:260)
                 .accessibilityLabel("Reconstruction algorithm")
+            Button("Recalculate",systemImage:"arrow.clockwise") { model.recalculateSelectedRun() }
+                .disabled(model.selectedRun == nil || model.selectedRunID.map { model.analysingIDs.contains($0) } == true)
+                .help("Recalculate the selected run using the selected algorithm and save the new result.")
             Text(model.reconstructionMethod == .improved ? "Improved · experimental estimates" : "Old · original reconstruction")
                 .font(.caption).foregroundStyle(.secondary)
         }

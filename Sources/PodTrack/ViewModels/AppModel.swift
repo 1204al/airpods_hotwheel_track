@@ -568,19 +568,34 @@ struct DebugEvent: Identifiable {
         comparisonNotice = "\(run.carDisplayName) has no \(reconstructionMethod.rawValue) reconstruction. Its recording is still saved; you can select the other method."
     }
 
-    func ensureAnalysis(_ run: RunSession) {
+    func recalculateSelectedRun() {
+        guard let run = selectedRun else { return }
+        let diskCache = AnalysisDiskCache(directory:store.directory.appendingPathComponent("AnalysisCache",isDirectory:true))
+        do { try diskCache.remove(run.id,method:reconstructionMethod) }
+        catch { errorMessage = "Could not clear saved analysis: \(error.localizedDescription)"; return }
+        invalidateAnalysis(run.id)
+        ensureAnalysis(run, force:true)
+    }
+
+    func ensureAnalysis(_ run: RunSession, force: Bool = false) {
         guard runs.contains(where:{$0 == run}), analyses[run.id] == nil,
               analysisErrors[run.id] == nil, !analysingIDs.contains(run.id) else { return }
         let method = reconstructionMethod, token = UUID()
+        let diskCache = AnalysisDiskCache(directory:store.directory.appendingPathComponent("AnalysisCache",isDirectory:true))
         analysingIDs.insert(run.id)
         let task = Task { [weak self] in
-            let worker = Task.detached(priority:.userInitiated) { try method.analyze(run) }
+            let worker = Task.detached(priority:.userInitiated) {
+                if !force, let cached = diskCache.load(run,method:method) { return cached }
+                return try method.analyze(run)
+            }
             let outcome = await withTaskCancellationHandler(operation:{ await worker.result },onCancel:{ worker.cancel() })
             guard !Task.isCancelled, let self, analysisTasks[run.id]?.token == token,
                   reconstructionMethod == method, runs.first(where:{$0.id == run.id}) == run else { return }
             switch outcome {
             case .success(let result):
                 analyses[run.id] = result; analysisCache[method,default:[:]][run.id] = result
+                do { try diskCache.save(result,run:run,method:method) }
+                catch { log("Could not save analysis cache: \(error.localizedDescription). The result remains available for this session.") }
             case .failure(let error):
                 analysisErrors[run.id] = error.localizedDescription
                 errorCache[method,default:[:]][run.id] = error.localizedDescription

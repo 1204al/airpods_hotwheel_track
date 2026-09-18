@@ -14,8 +14,14 @@ struct HeadphoneConnectionPanel: View {
         .sheet(isPresented:$showingHelp) { AirPodsSetupSheet(bud:model.selectedBud) }
     }
     private var microphoneHint: some View {
-        Label("Set Microphone → Always \(model.selectedBud.rawValue)",systemImage:"mic")
-            .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal:false,vertical:true)
+        ViewThatFits(in:.horizontal) {
+            HStack(spacing:12) { airPodsSettingsButtons }
+            VStack(alignment:.leading,spacing:8) { airPodsSettingsButtons }
+        }
+    }
+    @ViewBuilder private var airPodsSettingsButtons: some View {
+        SystemSettingsShortcut(title:"Microphone → Always \(model.selectedBud.rawValue)",icon:"mic",destination:.airPods)
+        SystemSettingsShortcut(title:"Automatic Ear Detection → Off",icon:"ear",destination:.airPods)
     }
     private var setupHelpButton: some View {
         Button("Setup guide",systemImage:"questionmark.circle") { showingChecklist = true }
@@ -138,8 +144,8 @@ struct AirPodsSetupReminder: View {
     var body: some View {
         VStack(alignment:.leading,spacing:12) {
             Text("Before recording").font(.headline)
-            Label("Microphone → Always \(bud.rawValue)",systemImage:"mic")
-            Label("Automatic Ear Detection → OFF",systemImage:"ear")
+            SystemSettingsShortcut(title:"Microphone → Always \(bud.rawValue)",icon:"mic",destination:.airPods)
+            SystemSettingsShortcut(title:"Automatic Ear Detection → Off",icon:"ear",destination:.airPods)
             Text("Check both settings in your AirPods settings.")
                 .font(.caption).foregroundStyle(.secondary)
             Button("Show Mac & iPhone screenshots",action:openGuide)
@@ -160,6 +166,7 @@ struct AirPodsSetupSheet: View {
     var body: some View {
         VStack(alignment:.leading,spacing:16) {
             Text("Set up the \(bud.rawValue) AirPod").font(.title2.bold())
+            SystemSettingsShortcut(title:"Open AirPods settings",icon:"airpodspro",destination:.airPods)
             HStack(alignment:.top,spacing:24) {
                 VStack(spacing:8) {
                     Picker("Screenshot",selection:$platform) {
@@ -275,6 +282,9 @@ struct HeadphoneStatusSummary: View {
             if !compact || showDetail {
                 Text(detail).font(.caption).foregroundStyle(.secondary).fixedSize(horizontal:false,vertical:true)
             }
+            if state == .permissionBlocked {
+                SystemSettingsShortcut(title:"Open Motion & Fitness",icon:"hand.raised",destination:.motion)
+            }
             if !compact || showTelemetry {
                 if model.sourceKind == .airPods {
                     HStack(spacing:12) {
@@ -288,5 +298,37 @@ struct HeadphoneStatusSummary: View {
                 }
             }
         }.accessibilityElement(children:.combine)
+    }
+}
+
+/// System Settings owns these controls; opening a page never changes a preference.
+private enum SettingsDestination {
+    case motion, airPods
+    var url: URL {
+        switch self {
+        case .motion: return URL(string:"x-apple.systempreferences:com.apple.preference.security?Privacy_Motion")!
+        case .airPods: return URL(string:"x-apple.systempreferences:com.apple.HeadphoneSettings")!
+        }
+    }
+}
+
+private struct SystemSettingsShortcut: View {
+    let title: String
+    let icon: String
+    let destination: SettingsDestination
+    @State private var failed = false
+    var body: some View {
+        Button {
+            failed = !NSWorkspace.shared.open(destination.url)
+        } label: {
+            Label(title,systemImage:icon)
+        }
+        .font(.caption).buttonStyle(.bordered)
+        .help("Open the corresponding page in System Settings. Change the setting there, then return and retry the connection.")
+        .alert("Could not open System Settings",isPresented:$failed) {
+            Button("OK",role:.cancel) {}
+        } message: {
+            Text("Open System Settings and select your AirPods, or Privacy & Security → Motion & Fitness for motion permission.")
+        }
     }
 }
