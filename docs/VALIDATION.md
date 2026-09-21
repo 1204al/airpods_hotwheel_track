@@ -2,6 +2,15 @@
 
 Development verification: **2026-09-14**, macOS 26.6.2, Xcode 26.6, Swift 6.3.3. Deployment target: macOS 14.0.
 
+## 2026-09-21 · 0.10.4 How It Works guide
+
+- Replaced the bottom Help button with a selectable **How It Works** destination under **Learn**, and added a shortcut beside the recording title. The guide now starts with an overview, followed by a practical recording walkthrough and the six interactive motion topics. All new copy is available in English and Ukrainian; narrow topic navigation wraps into two rows.
+- Updated the educational fixture to use the default Improved reconstruction. Direction and speed explanations now describe full-vector direction smoothing, turning evidence and supported rest windows. Chart endpoint labels report the fixture's estimates rather than asserting zero speed for all examples. Recording instructions include optional height/length, raw-only limitations and simulation. No recording or reconstruction algorithm changed.
+- Debug and Release builds passed, and the packaged **PodTrack 0.10.4 (21)** passed plist and ad-hoc signature validation. Regenerated the Xcode project to include the new guide view and the existing library/timeline views missing from its previous source list.
+- The packaged Release app rendered **34 native previews** into `build/verification-guide-0.10.4`: overview and recording at two widths in both languages, every motion topic, sensor states, scale extremes and light appearance. Inspected the overview, recording walkthrough, speed example, narrow topic grid and light appearance. Rendering uses synthetic motion and does not access the user's run library.
+- Live app checks confirmed version 0.10.4, the recording-screen shortcut, selected sidebar state, language switching, the overview-to-recording link and expandable troubleshooting. Computer Use's `SkyComputerUseService` crashed during the diagnostics shortcut inspection (`Array.remove(at:)` assertion); subsequent attempts to inspect that window also failed. The diagnostics transition and remaining example interactions were therefore not verified live; native rendering and source review passed.
+- Existing XCTest suite: **146 test cases**, **143 passed**, **3 failed with 8 assertions**. The two comparison timeouts and the height-edit expectation match the previously documented `ComparisonTests` / `TrackSceneTests` failures from September 18. All 76 core tests passed. Log: `build/guide-update-tests.log`; release packaging log: `build/guide-update-build.log`.
+
 ## 2026-09-18 · Play line with candidate events, a selectable range, and partial export
 
 - The time slider under the 3D view became a play line carrying the detected candidates: point events (release, bump, possible airtime, possible landing, finish) as coloured ticks, continuous slope and turn candidates as lane bands, with a legend of the kinds actually present. The white playhead stays the shared cursor for the 3D car, charts and readouts.

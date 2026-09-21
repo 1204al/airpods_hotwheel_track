@@ -12,9 +12,14 @@ struct RecordRunView: View {
     var body: some View {
         ScrollView {
             VStack(alignment:.leading,spacing:24) {
-                VStack(alignment:.leading,spacing:6) {
-                    Text("Record a run").font(.system(size:30,weight:.semibold,design:.rounded))
-                    Text("Connect your AirPod, calibrate the mount, then record.").foregroundStyle(.secondary)
+                HStack(alignment:.top,spacing:20) {
+                    VStack(alignment:.leading,spacing:6) {
+                        Text("Record a run").font(.system(size:30,weight:.semibold,design:.rounded))
+                        Text("Connect your AirPod, calibrate the mount, then record.").foregroundStyle(.secondary)
+                    }
+                    Spacer(minLength:0)
+                    Button("How It Works",systemImage:"questionmark.circle") { model.area = .howItWorks }
+                        .accessibilityIdentifier("record-how-it-works")
                 }
                 HStack(spacing:16) {
                     step(0,"Connect",complete:connected)

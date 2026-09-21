@@ -44,13 +44,17 @@ struct RootView: View {
                     }
                 }.padding(22)
                 List(selection:navigationSelection) {
-                    Label("Record",systemImage:"record.circle").tag(AppArea.record)
-                    Label("Runs",systemImage:"square.stack.3d.up").tag(AppArea.compare)
-                    Label("Device",systemImage:"airpodspro").tag(AppArea.dashboard)
+                    Section {
+                        Label("Record",systemImage:"record.circle").tag(AppArea.record)
+                        Label("Runs",systemImage:"square.stack.3d.up").tag(AppArea.compare)
+                        Label("Device",systemImage:"airpodspro").tag(AppArea.dashboard)
+                    }
+                    Section("Learn") {
+                        Label("How It Works",systemImage:"questionmark.circle").tag(AppArea.howItWorks)
+                            .accessibilityIdentifier("sidebar-how-it-works")
+                            .help("Understand PodTrack, prepare a run, and explore the motion examples.")
+                    }
                 }
-                Button { model.area = .howItWorks } label: {
-                    Label("Help",systemImage:"questionmark.circle").frame(maxWidth:.infinity,alignment:.leading)
-                }.buttonStyle(.plain).padding(.horizontal,22).padding(.vertical,12)
                 VStack(alignment:.leading,spacing:8) {
                     Picker("Motion source",selection:Binding(get:{ model.selectedSource },set:{ model.selectSource($0) })) {
                         ForEach(SourceKind.allCases,id:\.self) { Text($0.rawValue).tag($0) }

@@ -10,6 +10,18 @@ enum GuideLanguage: String, CaseIterable, Identifiable {
     }
 }
 
+enum GuideSection: String, CaseIterable, Identifiable {
+    case overview, recording, motion
+    var id: String { rawValue }
+    func label(_ language: GuideLanguage) -> String {
+        switch self {
+        case .overview: return language.text("Overview", "Огляд")
+        case .recording: return language.text("Record a run", "Запис заїзду")
+        case .motion: return language.text("Motion explained", "Пояснення руху")
+        }
+    }
+}
+
 enum GuideStep: Int, CaseIterable, Identifiable {
     case sensors, mount, direction, speed, path, scale
     var id: Int { rawValue }
@@ -39,7 +51,7 @@ enum GuideStep: Int, CaseIterable, Identifiable {
         case .sensors: return l.text("The AirPod measures acceleration.", "Прискорення вимірює AirPod.")
         case .mount: return l.text("Teach us where forward is.", "Покажіть, де «вперед».")
         case .direction: return l.text("Follow the car’s nose.", "Стежимо за носом машинки.")
-        case .speed: return l.text("Add up the acceleration.", "Накопичуємо прискорення.")
+        case .speed: return l.text("Fit speed to the motion.", "Оцінюємо швидкість за рухом.")
         case .path: return l.text("Join the small movements.", "Складаємо малі переміщення.")
         case .scale: return l.text("Give the path its scale.", "Задаємо масштаб шляху.")
         }
@@ -53,17 +65,17 @@ enum GuideStep: Int, CaseIterable, Identifiable {
             return l.text("Fix one AirPod firmly to the car. Capture a level pose, then a nose-up pose. Gravity in those two poses reveals the car’s forward and up axes.",
                           "Жорстко закріпіть один AirPod на машинці. Збережіть рівне положення, потім — із піднятим носом. За напрямком тяжіння у двох позах визначаємо осі «вперед» і «вгору».")
         case .direction:
-            return l.text("Core Motion supplies orientation, rotation and acceleration. We use orientation to find the turn, and gravity to find the slope. Together they give a direction in 3D.",
-                          "Core Motion передає орієнтацію, обертання й прискорення. З орієнтації визначаємо поворот, із гравітації — нахил. Разом вони задають напрямок у 3D.")
+            return l.text("The saved mounting calibration turns the AirPod’s orientation into the car’s forward direction. PodTrack follows that direction in 3D, including slopes, turns and upside-down motion.",
+                          "Збережене калібрування перетворює орієнтацію AirPod на напрямок машинки. PodTrack відстежує його у 3D: на схилах, у поворотах і навіть догори колесами.")
         case .speed:
-            return l.text("We take the AirPod’s acceleration along the car’s forward axis and add its effect on speed over time. Assuming the car starts and ends at rest helps us reduce accumulated error.",
-                          "Беремо прискорення AirPod уздовж машинки й накопичуємо його вплив на швидкість у часі. Припущення про спокій на початку та наприкінці допомагає зменшити накопичену похибку.")
+            return l.text("The default Improved method combines forward acceleration with evidence from turns to estimate speed over time. Still periods at the recording’s edges can help correct drift when the rest setting is enabled.",
+                          "Типовий метод Improved поєднує прискорення вперед із даними поворотів, щоб оцінити швидкість у часі. Нерухомі відрізки на початку й наприкінці запису допомагають зменшити дрейф, якщо ввімкнено умову спокою.")
         case .path:
             return l.text("For each time step, move along the estimated direction by speed × time. Joining these movements builds the centerline shown as a 3D track.",
                           "За кожен крок часу рухаємось у визначеному напрямку на відстань «швидкість × час». Сума цих переміщень утворює центральну лінію 3D-траси.")
         case .scale:
-            return l.text("Measure H between the lowest and highest track points to set scale. Choose Unknown to see an approximate shape in relative units. Add H later to estimate metres and m/s.",
-                          "Виміряйте H між найнижчою та найвищою точками для масштабу. Оберіть Unknown, щоб побачити приблизну форму в умовних одиницях. Додайте H пізніше для оцінок у метрах і м/с.")
+            return l.text("A measured height H or along-track length sets the physical scale. Without either measurement, the whole path is 1 relative unit. Add a measurement later to see estimates in metres and m/s.",
+                          "Виміряна висота H або довжина вздовж траси задає фізичний масштаб. Без обох вимірів увесь шлях дорівнює 1 умовній одиниці. Додайте вимір пізніше, щоб отримати оцінки в метрах і м/с.")
         }
     }
     func takeaway(_ l: GuideLanguage) -> String {
@@ -81,9 +93,9 @@ enum GuideStep: Int, CaseIterable, Identifiable {
         case .sensors: return l.text("Accelerometer + gyroscope", "Акселерометр + гіроскоп")
         case .mount: return l.text("Two still poses", "Дві нерухомі пози")
         case .direction: return l.text("Orientation + gravity", "Орієнтація + гравітація")
-        case .speed: return l.text("Acceleration + time", "Прискорення + час")
+        case .speed: return l.text("Acceleration + turning + time", "Прискорення + повороти + час")
         case .path: return l.text("Direction + speed + time", "Напрямок + швидкість + час")
-        case .scale: return l.text("Measured height H", "Виміряна висота H")
+        case .scale: return l.text("Measured height or length", "Виміряна висота або довжина")
         }
     }
     func output(_ l: GuideLanguage) -> String {
@@ -101,7 +113,7 @@ enum GuideStep: Int, CaseIterable, Identifiable {
         case .sensors: return "a_total = gravity + userAcceleration\n1 g ≈ 9.81 m/s²"
         case .mount: return "up = −g₀\nforward = −normalize(g₁ − (g₁ · g₀)g₀)"
         case .direction: return "d = (cos θ cos ψ, cos θ sin ψ, sin θ)"
-        case .speed: return "vᵢ = vᵢ₋₁ + ½(aᵢ₋₁ + aᵢ) Δt"
+        case .speed: return "Δv ≈ a_forward · Δt\na_normal ≈ v · (ω × forward)\nv ≥ 0"
         case .path: return "pᵢ = pᵢ₋₁ + ½(dᵢ₋₁vᵢ₋₁ + dᵢvᵢ) Δt"
         case .scale: return "k = H / (zₘₐₓ − zₘᵢₙ)\np′ = k · p     v′ = k · v"
         }
@@ -115,11 +127,11 @@ enum GuideStep: Int, CaseIterable, Identifiable {
             return l.text("g₀ and g₁ are unit gravity vectors in the level and nose-up poses. Left and Right have separate saved calibrations. Recalibrate after moving the AirPod.",
                           "g₀ та g₁ — одиничні вектори гравітації у рівній позі та з піднятим носом. Лівий і правий AirPod мають окремі калібрування. Після зміни кріплення калібруйте знову.")
         case .direction:
-            return l.text("θ is slope; ψ is horizontal heading. Heading comes from the orientation quaternion, checked against gravity and rotation. X follows the initial heading, Y points left, Z points up. There is no north or Mac-relative position.",
-                          "θ — нахил; ψ — горизонтальний курс. Курс отримуємо з кватерніона орієнтації, перевіреного за гравітацією й обертанням. X — початковий напрямок, Y — ліворуч, Z — вгору. Прив’язки до півночі чи Mac немає.")
+            return l.text("θ is slope; ψ is horizontal heading. Improved smooths the full forward vector before deriving those angles, which avoids averaging headings across a vertical passage. Orientation is checked against gravity and rotation. X follows the initial heading, Y points left, Z points up; there is no north or Mac-relative position.",
+                          "θ — нахил; ψ — горизонтальний курс. Improved згладжує повний вектор напрямку, а вже потім обчислює кути. Це усуває усереднення курсу під час проходження вертикалі. Орієнтація перевіряється за гравітацією й обертанням. X — початковий напрямок, Y — ліворуч, Z — вгору; прив’язки до півночі чи Mac немає.")
         case .speed:
-            return l.text("We remove the resting offset and infer acceleration sign from the early descent. A slope-and-rolling-resistance model contributes up to 20% by default, less when it disagrees with the sensor and zero in possible free fall. With end-rest enabled, a constant acceleration correction makes the integrated end speed zero; speed is then clipped nonnegative and smoothed. Initial speed is assumed zero even with end-rest off.",
-                          "Віднімаємо зміщення у спокої та визначаємо знак прискорення за початковим спуском. Модель схилу й опору коченню має до 20% ваги за замовчуванням; менше за розбіжностей із сенсором і нуль у можливому вільному падінні. За умови зупинки наприкінці стала поправка прискорення зводить кінцеву інтегровану швидкість до нуля. Далі прибираємо від’ємні значення й згладжуємо. Початкова швидкість завжди приймається за нуль.")
+            return l.text("Improved fits nonnegative speed to forward acceleration, turning acceleration and smoothness. Here ω is angular velocity and forward is the calibrated car axis. With the rest setting enabled, only supported still windows at the recording edges supply zero-speed constraints; quiet interior samples do not prove a stop. Matching repeated circuits can add return and shared-route constraints. These are experimental assumptions, not independent accuracy checks. Old remains available for comparison; it integrates acceleration and applies an endpoint correction.",
+                          "Improved підбирає невід’ємну швидкість за прискоренням вперед, прискоренням у поворотах та умовою плавності. Тут ω — кутова швидкість, forward — відкалібрована вісь машинки. За ввімкненої умови спокою лише підтверджені нерухомі відрізки на краях запису задають нульову швидкість; тихі відрізки всередині не доводять зупинку. Схожі повторні кола можуть додати умови повернення та спільного маршруту. Це експериментальні припущення, а не незалежна перевірка точності. Old доступний для порівняння: він інтегрує прискорення й застосовує поправку на кінцеву швидкість.")
         case .path:
             return l.text("p is position, d is unit direction, v is speed, and Δt is elapsed time. We average the two neighbouring velocity vectors at each step. Track width, rails and supports are illustrative. A loose mount, sideways slide or airborne rotation breaks the direction assumption.",
                           "p — положення, d — одиничний напрямок, v — швидкість, Δt — проміжок часу. На кожному кроці усереднюємо два сусідні вектори швидкості. Ширина дороги, бортики й опори — ілюстрація. Рух кріплення, бічне ковзання та обертання в польоті порушують припущення про напрямок.")
@@ -137,6 +149,6 @@ enum GuideExample {
         let fixture = SimulatedTrack.generate(drop:height,includeJump:false,profile:.raisedFinish)
         let run = RunSession(source:.simulation,metadata:.init(trackName:"Learning example",verticalDrop:height),
                              calibration:fixture.calibration,samples:fixture.samples)
-        return try? AnalysisPipeline.analyze(run)
+        return try? ReconstructionMethod.improved.analyze(run)
     }()
 }

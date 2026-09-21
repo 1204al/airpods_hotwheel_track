@@ -5,13 +5,14 @@ struct HowItWorksView: View {
     @EnvironmentObject var model: AppModel
     @AppStorage("howItWorksLanguage") private var language = GuideLanguage.ukrainian
     var body: some View {
-        HowItWorksPage(language:$language) { model.area = .record }
+        HowItWorksPage(language:$language,onDiagnostics:{ model.area = .diagnostics }) { model.area = .record }
     }
 }
 
 struct HowItWorksPage: View {
     @Environment(\.colorScheme) private var colorScheme
     @Binding var language: GuideLanguage
+    @State private var section: GuideSection
     @State private var step: GuideStep
     @State private var tilt = 28.0
     @State private var heading = 32.0
@@ -21,12 +22,15 @@ struct HowItWorksPage: View {
     @State private var showMath = false
     @State private var showLimits = false
     @State private var sensorMotion: GuideSensorMotion
+    var onDiagnostics: () -> Void
     var onRecord: () -> Void
 
-    init(language: Binding<GuideLanguage>, initialStep: GuideStep = .sensors,
+    init(language: Binding<GuideLanguage>, initialSection: GuideSection = .overview, initialStep: GuideStep = .sensors,
          initialHeight: Double = 58, initialSensorMotion: GuideSensorMotion = .still,
+         onDiagnostics: @escaping () -> Void = {},
          onRecord: @escaping () -> Void = {}) {
         _language = language; _step = State(initialValue:initialStep)
+        _section = State(initialValue:initialSection); self.onDiagnostics = onDiagnostics
         _height = State(initialValue:initialHeight); self.onRecord = onRecord
         _sensorMotion = State(initialValue:initialSensorMotion)
     }
@@ -37,17 +41,40 @@ struct HowItWorksPage: View {
 
     var body: some View {
         GeometryReader { geometry in
-            ScrollView {
-                VStack(alignment:.leading,spacing:24) {
-                    header
-                    steps
-                    lesson(compact:geometry.size.width < 760)
-                    accuracy
-                    recording
+            ScrollViewReader { proxy in
+                ScrollView {
+                    VStack(alignment:.leading,spacing:24) {
+                        header.id("guide-top")
+                        sectionPicker
+                        switch section {
+                        case .overview:
+                            GuideOverview(language:language,compact:geometry.size.width < 740,accent:accent,
+                                          onRecordingGuide:{ section = .recording },onMotion:{ section = .motion })
+                        case .recording:
+                            GuideRecordingWalkthrough(language:language,accent:accent,onRecord:onRecord,onDiagnostics:onDiagnostics)
+                        case .motion:
+                            VStack(alignment:.leading,spacing:8) {
+                                Text(t("Explore how motion becomes a track.", "Дослідіть, як рух стає траєкторією."))
+                                    .font(.system(size:24,weight:.semibold,design:.rounded))
+                                Text(t("Choose a topic or follow all six. Try the controls; they only change the example.",
+                                       "Оберіть тему або пройдіть усі шість. Керування змінює лише навчальний приклад."))
+                                    .font(.callout).foregroundStyle(.secondary)
+                            }
+                            steps(compact:geometry.size.width < 900).id("guide-topics")
+                            lesson(compact:geometry.size.width < 760)
+                            accuracy
+                            recording
+                        }
+                    }
+                    .padding(28)
+                    .frame(maxWidth:1180)
+                    .frame(maxWidth:.infinity,alignment:.top)
                 }
-                .padding(28)
-                .frame(maxWidth:1180)
-                .frame(maxWidth:.infinity,alignment:.top)
+                .onChange(of:section) { _,_ in proxy.scrollTo("guide-top",anchor:.top) }
+                .onChange(of:step) { _,_ in
+                    showMath = false
+                    proxy.scrollTo("guide-topics",anchor:.top)
+                }
             }
         }
         .tint(accent)
@@ -57,7 +84,7 @@ struct HowItWorksPage: View {
     private var header: some View {
         VStack(alignment:.leading,spacing:12) {
             HStack {
-                Text(t("HOW PODTRACK WORKS", "ЯК ПРАЦЮЄ PODTRACK"))
+                Text(t("PODTRACK GUIDE", "ДОВІДКА PODTRACK"))
                     .font(.system(size:10,weight:.bold,design:.monospaced)).tracking(2).foregroundStyle(accent)
                 Spacer()
                 Picker(t("Page language", "Мова сторінки"),selection:$language) {
@@ -66,17 +93,25 @@ struct HowItWorksPage: View {
                 .pickerStyle(.segmented).labelsHidden().frame(width:210)
                 .accessibilityIdentifier("guide-language")
             }
-            Text(t("From motion to a track.", "Від руху до траєкторії."))
+            Text(t("How It Works", "Як це працює"))
                 .font(.system(size:34,weight:.semibold,design:.rounded))
                 .fixedSize(horizontal:false,vertical:true)
-            Text(t("One AirPod. An estimated 3D path. Add a measurement to set scale.",
-                   "Один AirPod. Оцінена 3D-траєкторія. Додайте вимір для масштабу."))
+            Text(t("Understand the app, prepare a run, and explore the science behind it.",
+                   "Дізнайтеся про застосунок, підготуйте заїзд і дослідіть принципи його роботи."))
                 .font(.callout).foregroundStyle(.secondary)
         }
     }
 
-    private var steps: some View {
-        HStack(spacing:8) {
+    private var sectionPicker: some View {
+        Picker(t("Guide section", "Розділ довідки"),selection:$section) {
+            ForEach(GuideSection.allCases) { item in Text(item.label(language)).tag(item) }
+        }.pickerStyle(.segmented).labelsHidden().controlSize(.large)
+            .frame(maxWidth:640,alignment:.leading)
+            .accessibilityIdentifier("guide-section")
+    }
+
+    private func steps(compact: Bool) -> some View {
+        LazyVGrid(columns:Array(repeating:GridItem(.flexible(),spacing:8),count:compact ? 3 : 6),spacing:8) {
             ForEach(GuideStep.allCases) { item in
                 Button { step = item; showMath = false } label: {
                     VStack(alignment:.leading,spacing:10) {
@@ -86,7 +121,7 @@ struct HowItWorksPage: View {
                             Image(systemName:item.icon).font(.system(size:15,weight:.medium))
                         }.foregroundStyle(step == item ? accent : .secondary)
                         Text(item.label(language)).font(.system(size:13,weight:step == item ? .semibold : .medium))
-                            .foregroundStyle(.primary).lineLimit(1).minimumScaleFactor(0.85)
+                            .foregroundStyle(.primary).fixedSize(horizontal:false,vertical:true)
                     }
                     .padding(13).frame(maxWidth:.infinity,alignment:.leading)
                     .background(step == item ? PodTheme.teal.opacity(0.10) : Color.primary.opacity(0.025),in:RoundedRectangle(cornerRadius:12))
@@ -95,6 +130,7 @@ struct HowItWorksPage: View {
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel("\(item.rawValue+1). \(item.label(language))")
+                .accessibilityHint(t("Open this motion topic", "Відкрити цю тему про рух"))
                 .accessibilityAddTraits(step == item ? .isSelected : [])
                 .accessibilityIdentifier("guide-step-\(item.rawValue)")
             }
@@ -107,7 +143,7 @@ struct HowItWorksPage: View {
                 Label(t("INTERACTIVE EXAMPLE", "ІНТЕРАКТИВНИЙ ПРИКЛАД"),systemImage:"hand.draw")
                     .font(.system(size:10,weight:.semibold,design:.monospaced)).tracking(1)
                 Spacer()
-                Text(t("Illustrations & synthetic motion", "Схеми та синтетичний рух")).font(.caption)
+                Text(t("Synthetic example · Improved", "Синтетичний приклад · Improved")).font(.caption)
             }.foregroundStyle(.secondary).padding(.horizontal,22).padding(.vertical,16)
             Divider().opacity(0.5)
             let layout = compact ? AnyLayout(VStackLayout(alignment:.leading,spacing:24)) : AnyLayout(HStackLayout(alignment:.top,spacing:28))
@@ -179,8 +215,8 @@ struct HowItWorksPage: View {
             VStack(spacing:18) {
                 GuideMountDiagram(language:language,tilt:tilt).frame(height:245)
                 guideSlider(t("Lift the nose", "Підніміть ніс"),value:$tilt,range:15...45,unit:"°",digits:0)
-                Text(t("Hold each pose still for 1 second. Capture in Record Run.",
-                       "Тримайте кожну позу 1 секунду. Збережіть її на сторінці запису."))
+                Text(t("Click Capture in Record, then hold each pose still until accepted.",
+                       "Натисніть Capture у Record і тримайте кожну позу до підтвердження."))
                     .font(.caption).foregroundStyle(.secondary).frame(maxWidth:.infinity,alignment:.leading)
             }
         case .direction:
@@ -197,7 +233,7 @@ struct HowItWorksPage: View {
                     HStack {
                         guideValue(t("Estimated speed", "Оцінена швидкість"),value:"\(formatted(point(result).speed)) m/s",color:.orange)
                         Spacer()
-                        guideValue(t("At both ends", "На обох кінцях"),value:"0 m/s",color:PodTheme.teal)
+                        guideValue(t("Peak in this example", "Максимум у прикладі"),value:"\(formatted(result.metrics.estimatedMaximumSpeed)) m/s",color:PodTheme.teal)
                     }
                 }
             } else { unavailable }

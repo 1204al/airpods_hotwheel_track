@@ -452,7 +452,7 @@ import PodTrackCore
             .background(Color(nsColor:.windowBackgroundColor)).environment(\.colorScheme,.dark)
         try renderView(comparisonView,to:output.appendingPathComponent("relative-comparison.png"))
         for language in GuideLanguage.allCases {
-            let guide = HowItWorksPage(language:.constant(language),initialStep:.scale)
+            let guide = HowItWorksPage(language:.constant(language),initialSection:.motion,initialStep:.scale)
                 .frame(width:840,height:740).background(Color(nsColor:.windowBackgroundColor)).environment(\.colorScheme,.dark)
             try renderView(guide,to:output.appendingPathComponent("guide-scale-\(language.rawValue).png"))
         }
@@ -563,34 +563,48 @@ import PodTrackCore
         try FileManager.default.createDirectory(at:output,withIntermediateDirectories:true)
         guard GuideExample.result != nil else { throw PodTrackError.invalid("Educational simulation failed to reconstruct.") }
         for language in GuideLanguage.allCases {
+            for section in [GuideSection.overview,.recording] {
+                for width in [840.0,1100.0] {
+                    let page = HowItWorksPage(language:.constant(language),initialSection:section)
+                        .frame(width:width,height:1100).background(Color(nsColor:.windowBackgroundColor))
+                        .environment(\.colorScheme,.dark)
+                    try renderView(page,to:output.appendingPathComponent("\(language.rawValue)-\(section.rawValue)-\(Int(width)).png"))
+                }
+            }
             for step in GuideStep.allCases {
-                let page = HowItWorksPage(language:.constant(language),initialStep:step)
+                let page = HowItWorksPage(language:.constant(language),initialSection:.motion,initialStep:step)
                     .frame(width:1100,height:940).background(Color(nsColor:.windowBackgroundColor))
                     .environment(\.colorScheme,.dark)
                 try renderView(page,to:output.appendingPathComponent("\(language.rawValue)-\(step.rawValue).png"))
             }
             for height in [29.0,87.0] {
-                let page = HowItWorksPage(language:.constant(language),initialStep:.scale,initialHeight:height)
+                let page = HowItWorksPage(language:.constant(language),initialSection:.motion,initialStep:.scale,initialHeight:height)
                     .frame(width:840,height:740).background(Color(nsColor:.windowBackgroundColor))
                     .environment(\.colorScheme,.dark)
                 try renderView(page,to:output.appendingPathComponent("\(language.rawValue)-minimum-\(Int(height)).png"))
             }
             for motion in GuideSensorMotion.allCases {
-                let page = HowItWorksPage(language:.constant(language),initialStep:.sensors,initialSensorMotion:motion)
+                let page = HowItWorksPage(language:.constant(language),initialSection:.motion,initialStep:.sensors,initialSensorMotion:motion)
                     .frame(width:840,height:940).background(Color(nsColor:.windowBackgroundColor))
                     .environment(\.colorScheme,.dark)
                 try renderView(page,to:output.appendingPathComponent("\(language.rawValue)-sensors-\(motion.rawValue).png"))
             }
         }
-        let light = HowItWorksPage(language:.constant(.ukrainian),initialStep:.direction)
+        for section in [GuideSection.overview,.recording] {
+            let page = HowItWorksPage(language:.constant(.ukrainian),initialSection:section)
+                .frame(width:840,height:1100).background(Color(nsColor:.windowBackgroundColor))
+                .environment(\.colorScheme,.light)
+            try renderView(page,to:output.appendingPathComponent("uk-\(section.rawValue)-light.png"),colorScheme:.light)
+        }
+        let light = HowItWorksPage(language:.constant(.ukrainian),initialSection:.motion,initialStep:.direction)
             .frame(width:840,height:900).background(Color(nsColor:.windowBackgroundColor))
             .environment(\.colorScheme,.light)
         try renderView(light,to:output.appendingPathComponent("uk-light.png"),colorScheme:.light)
-        let sensorLight = HowItWorksPage(language:.constant(.ukrainian),initialStep:.sensors,initialSensorMotion:.accelerating)
+        let sensorLight = HowItWorksPage(language:.constant(.ukrainian),initialSection:.motion,initialStep:.sensors,initialSensorMotion:.accelerating)
             .frame(width:840,height:940).background(Color(nsColor:.windowBackgroundColor))
             .environment(\.colorScheme,.light)
         try renderView(sensorLight,to:output.appendingPathComponent("uk-sensors-light.png"),colorScheme:.light)
-        print("Rendered all \(GuideStep.allCases.count) guide steps in English and Ukrainian, the three sensor states, minimum-width scale extremes, and light appearance. Educational examples only; no run library accessed.")
+        print("Rendered overview, recording walkthrough and all \(GuideStep.allCases.count) motion topics in English and Ukrainian, the three sensor states, minimum-width scale extremes, and light appearance. Educational examples use Improved; no run library accessed.")
     }
     static func renderView<Content: View>(_ content: Content, to url: URL, colorScheme: ColorScheme = .dark) throws {
         // NSHostingView includes the native backing views of text fields and sliders.

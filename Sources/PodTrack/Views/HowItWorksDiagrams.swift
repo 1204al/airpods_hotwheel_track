@@ -186,19 +186,19 @@ struct GuideSpeedDiagram: View {
             .chartYAxis { AxisMarks(position:.leading,values:.automatic(desiredCount:3)) }
             .frame(height:83)
             HStack {
-                Text(language.text("Start at rest", "Спокій на старті"))
+                Text(language.text("Start", "Старт") + " · \(formatted(result.points.first?.speed ?? 0)) m/s")
                 Spacer()
                 Text(language.text("Time · s", "Час · s"))
                 Spacer()
-                Text(language.text("End at rest", "Спокій на фініші"))
+                Text(language.text("Finish", "Фініш") + " · \(formatted(result.points.last?.speed ?? 0)) m/s")
             }.font(.system(size:9)).foregroundStyle(GuideInk.muted)
         }
         .padding(17)
         .background(GuideInk.background,in:RoundedRectangle(cornerRadius:14))
         .environment(\.colorScheme,.dark)
         .accessibilityElement(children:.ignore)
-        .accessibilityLabel(language.text("Synthetic run. The top graph shows forward sensor acceleration with its sign aligned; the lower graph shows estimated speed. Speed starts and ends at zero. Cursor: \(formatted(time)) seconds.",
-                                         "Синтетичний заїзд. Верхній графік — прискорення вздовж машинки з узгодженим знаком, нижній — оцінена швидкість. На початку й наприкінці швидкість нульова. Курсор: \(formatted(time)) секунди."))
+        .accessibilityLabel(language.text("Synthetic run using Improved. The top graph shows forward sensor acceleration with its sign aligned; the lower graph shows estimated speed. Start: \(formatted(result.points.first?.speed ?? 0)) m/s. Finish: \(formatted(result.points.last?.speed ?? 0)) m/s. Cursor: \(formatted(time)) seconds.",
+                                         "Синтетичний заїзд із методом Improved. Верхній графік — прискорення вздовж машинки з узгодженим знаком, нижній — оцінена швидкість. Старт: \(formatted(result.points.first?.speed ?? 0)) м/с. Фініш: \(formatted(result.points.last?.speed ?? 0)) м/с. Курсор: \(formatted(time)) секунди."))
     }
 }
 
