@@ -77,12 +77,15 @@ Passing these checks does not prove accuracy on a real track.
 
 ## README images
 
-The README uses these app images without image edits:
+The README uses these images without image edits:
 
 | Image | Source |
 | --- | --- |
 | `images/podtrack-3d-track.png` | The looped-track image from the original README, reused unchanged |
 | `images/podtrack-motion-guide.png` | PodTrack 0.10.4, `--render-guide`, output `en-2.png`; the interactive direction example |
+| `images/reddit-airpod-mounted-car.jpeg` | Original photo supplied from the [r/HotWheels post](https://www.reddit.com/r/HotWheels/comments/1whddb6/i_taped_an_airpod_to_a_hot_wheels_car_and_used/); AirPod mounted on the car |
+| `images/reddit-hot-wheels-track.jpeg` | Original photo supplied from the same Reddit post; the physical Hot Wheels track |
+| `images/reddit-estimated-3d-track.jpeg` | Original screenshot supplied from the same Reddit post; an estimated 3D path |
 
 Keep sample images clearly labelled. Do not present generated examples as measurements from a real car.
 

@@ -4,6 +4,16 @@
 
 *A looped track in PodTrack's 3D view.*
 
+[See the Reddit post and discussion on r/HotWheels](https://www.reddit.com/r/HotWheels/comments/1whddb6/i_taped_an_airpod_to_a_hot_wheels_car_and_used/).
+
+<p align="center">
+  <a href="docs/images/reddit-airpod-mounted-car.jpeg"><img src="docs/images/reddit-airpod-mounted-car.jpeg" alt="An AirPod taped to a red Hot Wheels car, next to its charging case" width="32%"></a>
+  <a href="docs/images/reddit-hot-wheels-track.jpeg"><img src="docs/images/reddit-hot-wheels-track.jpeg" alt="A physical Hot Wheels track with orange loops and a blue turn" width="32%"></a>
+  <a href="docs/images/reddit-estimated-3d-track.jpeg"><img src="docs/images/reddit-estimated-3d-track.jpeg" alt="PodTrack showing an estimated 3D path from an AirPod recording" width="32%"></a>
+</p>
+
+*From the Reddit post: the AirPod mount, the physical track, and an estimated 3D path. Click an image to view it at full size.*
+
 A Mac app that records movement from an AirPod attached to a Hot Wheels car. See an estimated 3D track, replay a run, and compare cars.
 
 **Track shape, speed, and distance are estimates.** AirPods do not measure position or speed directly. Errors can grow during a run, and real-world accuracy has not yet been measured.
